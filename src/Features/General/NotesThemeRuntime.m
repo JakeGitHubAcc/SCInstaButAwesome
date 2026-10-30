@@ -1,5 +1,6 @@
 #import "NotesThemeRuntime.h"
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 @implementation SCINotesThemeRuntime
 
@@ -92,38 +93,49 @@
     return color;
 }
 
-+ (BOOL)applyGradientFrom:(UIColor *)startColor to:(UIColor *)endColor onThemeModel:(id)themeModel {
-    if (!themeModel) return NO;
++ (id)themeModelWithBackground:(UIColor *)background
+                gradientColors:(NSArray<UIColor *> *)gradientColors
+                     textColor:(UIColor *)textColor
+                         emoji:(NSString *)emoji
+                activationType:(NSString *)activationType
+                       basedOn:(id)existing
+{
+    Class modelClass = NSClassFromString(@"IGNotesCustomThemeCreationModel");
+    SEL initializer = NSSelectorFromString(@"initWithBackgroundColor:gradientBackgroundColors:textColor:secondaryTextColor:customEmoji:customizationId:usedGeneratedTheme:activationType:");
+    if (!modelClass || ![modelClass instancesRespondToSelector:initializer]) return nil;
 
-    BOOL applied = NO;
-    NSDictionary *properties = [self propertiesOfClass:[themeModel class]];
+    // Values to carry over from the current theme
+    id (^existingValue)(NSString *) = ^id (NSString *key) {
+        if (!existing || ![existing respondsToSelector:NSSelectorFromString(key)]) return nil;
+        @try { return [existing valueForKey:key]; }
+        @catch (NSException *exception) { return nil; }
+    };
 
-    for (NSString *name in properties) {
-        NSString *lowercase = name.lowercaseString;
-        NSString *type = properties[name];
-        if (![lowercase containsString:@"gradient"]) continue;
+    NSString *customizationId = existingValue(@"customizationId");
+    BOOL usedGeneratedTheme = [existingValue(@"usedGeneratedTheme") boolValue];
+    if (!activationType) activationType = existingValue(@"activationType");
 
-        @try {
-            if ([type containsString:@"NSArray"]) {
-                NSArray *existing = [themeModel valueForKey:name];
-                id example = [existing isKindOfClass:[NSArray class]] ? existing.firstObject : nil;
+    // Match the element type Instagram already uses for gradients, if there is one
+    NSArray *gradient = nil;
+    if (gradientColors.count) {
+        NSArray *existingGradient = existingValue(@"gradientBackgroundColors");
+        id example = [existingGradient isKindOfClass:[NSArray class]] ? existingGradient.firstObject : nil;
 
-                [themeModel setValue:@[[self color:startColor matchingExample:example], [self color:endColor matchingExample:example]] forKey:name];
-                applied = YES;
-            }
-            else if ([type containsString:@"UIColor"]) {
-                BOOL isEnd = [lowercase containsString:@"end"] || [lowercase containsString:@"bottom"] || [lowercase containsString:@"second"] || [lowercase containsString:@"last"];
-
-                [themeModel setValue:isEnd ? endColor : startColor forKey:name];
-                applied = YES;
-            }
-        }
-        @catch (NSException *exception) {
-            NSLog(@"[SCInsta] Notes: couldn't set gradient field %@: %@", name, exception.reason);
-        }
+        NSMutableArray *converted = [NSMutableArray array];
+        for (UIColor *color in gradientColors) [converted addObject:[self color:color matchingExample:example]];
+        gradient = converted;
     }
 
-    return applied;
+    typedef id (*InitFunction)(id, SEL, UIColor *, NSArray *, UIColor *, UIColor *, NSString *, NSString *, BOOL, NSString *);
+    InitFunction init = (InitFunction)objc_msgSend;
+
+    @try {
+        return init([modelClass alloc], initializer, background, gradient, textColor, textColor, emoji, customizationId, usedGeneratedTheme, activationType);
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Notes: couldn't create theme model: %@", exception.reason);
+        return nil;
+    }
 }
 
 // MARK: - Debug
@@ -204,6 +216,22 @@
         [self presetNamed:@"Thanksgiving"     background:@"784212" text:@"FAE5D3" emoji:@"🦃" gradientEnd:@"CA6F1E"],
         [self presetNamed:@"Winter"           background:@"D6EAF8" text:@"1B4F72" emoji:@"❄️" gradientEnd:@"FFFFFF"],
         [self presetNamed:@"Christmas"        background:@"B03A2E" text:@"FFFFFF" emoji:@"🎄" gradientEnd:@"1E8449"],
+    ];
+}
+
++ (NSArray<NSDictionary *> *)instagramSeasonalThemes {
+    // Values of the IGXDTNoteActivationTypeEnum constants in Instagram 418.2.0
+    return @[
+        @{ @"name": @"Halloween pumpkin",  @"emoji": @"🎃", @"activationType": @"halloween_note_pumpkin" },
+        @{ @"name": @"Halloween bat",      @"emoji": @"🦇", @"activationType": @"halloween_note_bat" },
+        @{ @"name": @"Halloween spider",   @"emoji": @"🕷️", @"activationType": @"halloween_note_spider" },
+        @{ @"name": @"Valentine's red",    @"emoji": @"❤️", @"activationType": @"valentines_red" },
+        @{ @"name": @"Valentine's pink",   @"emoji": @"🩷", @"activationType": @"valentines_pink" },
+        @{ @"name": @"Valentine's black",  @"emoji": @"🖤", @"activationType": @"valentines_black" },
+        @{ @"name": @"New Year's Eve",     @"emoji": @"🎆", @"activationType": @"nye_2025" },
+        @{ @"name": @"End of year",        @"emoji": @"✨", @"activationType": @"end_of_year_notes" },
+        @{ @"name": @"Graduation",         @"emoji": @"🎓", @"activationType": @"end_of_school_graduation_notes" },
+        @{ @"name": @"March Madness",      @"emoji": @"🏀", @"activationType": @"march_madness_generic_notes" },
     ];
 }
 

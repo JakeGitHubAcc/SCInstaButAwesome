@@ -16,9 +16,15 @@ NS_ASSUME_NONNULL_BEGIN
 // Returns the names of the flags that were switched on.
 + (NSArray<NSString *> *)enableAllFeatureFlagsOnModel:(id)supportModel;
 
-// Sets a two color gradient on a custom theme model, if this Instagram version has a gradient field.
-// Returns NO when no gradient field exists.
-+ (BOOL)applyGradientFrom:(UIColor *)startColor to:(UIColor *)endColor onThemeModel:(id)themeModel;
+// Builds a new custom theme model through Instagram's own initializer, which is the only way
+// to set its gradient and activation type (they have no setters). Keeps the customization id
+// and other values of `existing`. Returns nil if this Instagram version lacks the initializer.
++ (nullable id)themeModelWithBackground:(UIColor *)background
+                         gradientColors:(nullable NSArray<UIColor *> *)gradientColors
+                              textColor:(UIColor *)textColor
+                                  emoji:(nullable NSString *)emoji
+                         activationType:(nullable NSString *)activationType
+                                basedOn:(nullable id)existing;
 
 // Property names and types of the note theme classes, for adding support for new Instagram versions
 + (NSString *)themeClassDump;
@@ -26,6 +32,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Built in color presets: name, background, text, emoji and an optional gradient end color
 + (NSArray<NSDictionary *> *)seasonalPresets;
 + (NSArray<NSDictionary *> *)gradientPresets;
+
+// Instagram's own seasonal note designs: name, emoji and activationType
++ (NSArray<NSDictionary *> *)instagramSeasonalThemes;
 
 @end
 
