@@ -315,6 +315,14 @@ static char targetStaticRef[] = "target";
         }]];
     }
 
+    NSMutableArray *instagramActions = [NSMutableArray array];
+    for (NSDictionary *theme in [SCINotesThemeRuntime instagramSeasonalThemes]) {
+        [instagramActions addObject:[UIAction actionWithTitle:[NSString stringWithFormat:@"%@ %@", theme[@"emoji"], theme[@"name"]] image:nil identifier:nil handler:^(UIAction *action) {
+            [weakSelf applySCIThemeWithBackground:nil text:nil emoji:nil gradientEnd:nil activationType:theme[@"activationType"]];
+        }]];
+    }
+    [seasonalActions insertObject:[UIMenu menuWithTitle:@"Instagram's seasonal designs" image:[UIImage systemImageNamed:@"sparkles"] identifier:nil options:0 children:instagramActions] atIndex:0];
+
     UIAction *swap = [UIAction actionWithTitle:@"Swap background and text" image:[UIImage systemImageNamed:@"arrow.left.arrow.right"] identifier:nil handler:^(UIAction *action) {
         UIColor *background = weakSelf.backgroundColor;
         [weakSelf applySCIThemeWithBackground:weakSelf.textColor ?: [UIColor whiteColor] text:background ?: [UIColor blackColor] emoji:weakSelf.emojiText gradientEnd:nil];
@@ -332,28 +340,41 @@ static char targetStaticRef[] = "target";
 }
 
 %new - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd {
+    [self applySCIThemeWithBackground:background text:text emoji:emoji gradientEnd:gradientEnd activationType:nil];
+}
+
+%new - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd activationType:(NSString *)activationType {
     if (background) self.backgroundColor = background;
     if (text) self.textColor = text;
     if (emoji) self.emojiText = emoji;
 
-    IGNotesCustomThemeCreationModel *model = [self sciCurrentThemeModel];
-    if (!model) return;
+    IGNotesCustomThemeCreationModel *current = [self sciCurrentThemeModel];
+    if (!current) return;
 
-    [model setValue:self.backgroundColor forKey:@"backgroundColor"];
-    if (self.textColor) {
-        [model setValue:self.textColor forKey:@"textColor"];
-        [model setValue:self.textColor forKey:@"secondaryTextColor"];
-    }
-    [model setValue:self.emojiText forKey:@"customEmoji"];
+    // Gradients and activation types can only be set through Instagram's initializer
+    NSArray *gradient = gradientEnd ? @[self.backgroundColor ?: [UIColor blackColor], gradientEnd] : nil;
+    IGNotesCustomThemeCreationModel *model = [SCINotesThemeRuntime themeModelWithBackground:self.backgroundColor ?: [UIColor blackColor]
+                                                                             gradientColors:gradient
+                                                                                  textColor:self.textColor ?: [UIColor whiteColor]
+                                                                                      emoji:self.emojiText
+                                                                             activationType:activationType
+                                                                                    basedOn:current];
 
-    if (gradientEnd) {
-        BOOL applied = [SCINotesThemeRuntime applyGradientFrom:self.backgroundColor to:gradientEnd onThemeModel:model];
+    if (!model) {
+        // Older or newer Instagram without that initializer: solid colors only
+        model = current;
+        [model setValue:self.backgroundColor forKey:@"backgroundColor"];
+        if (self.textColor) {
+            [model setValue:self.textColor forKey:@"textColor"];
+            [model setValue:self.textColor forKey:@"secondaryTextColor"];
+        }
+        [model setValue:self.emojiText forKey:@"customEmoji"];
 
-        if (!applied && ![[NSUserDefaults standardUserDefaults] boolForKey:@"notes_gradient_unsupported_shown"]) {
+        if ((gradientEnd || activationType) && ![[NSUserDefaults standardUserDefaults] boolForKey:@"notes_gradient_unsupported_shown"]) {
             [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"notes_gradient_unsupported_shown"];
 
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Gradients not available"
-                                                                           message:@"This Instagram version has no gradient field for note themes, so only the first color is used.\n\nTo help add support, go to SCInsta settings > Debug > Copy note theme fields and share the result."
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Not available in this Instagram version"
+                                                                           message:@"Gradients and Instagram's seasonal designs need Instagram's note theme initializer, which this version doesn't have, so only solid colors are used.\n\nTo help add support, go to SCInsta settings > Debug > Copy note theme fields and share the result."
                                                                     preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [[SCIUtils nearestViewControllerForView:self] presentViewController:alert animated:YES completion:nil];

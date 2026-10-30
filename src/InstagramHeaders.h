@@ -441,6 +441,7 @@
 - (UIMenu *)sciMoreMenu; // new
 - (void)applySCIPreset:(NSDictionary *)preset; // new
 - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd; // new
+- (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd activationType:(NSString *)activationType; // new
 - (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel; // new
 - (void)sciCommitThemeModel:(IGNotesCustomThemeCreationModel *)model; // new
 @end
