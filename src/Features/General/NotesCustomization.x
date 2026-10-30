@@ -50,7 +50,10 @@ static char targetStaticRef[] = "target";
 }
 %end
 
-// Demangled name: IGDirectNotesUISwift.IGDirectNotesBubbleEditorColorPaletteView
+// Demangled name: IGNotesBubbleCreationSwift.IGDirectNotesBubbleEditorColorPaletteView (453+)
+//                 IGDirectNotesUISwift.IGDirectNotesBubbleEditorColorPaletteView (418 and earlier)
+// The class to hook is picked in %ctor
+%group NotesPalette
 %hook _TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView
 %property (nonatomic, copy) UIColor *backgroundColor;
 %property (nonatomic, copy) UIColor *textColor;
@@ -387,13 +390,20 @@ static char targetStaticRef[] = "target";
 %new - (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel {
     // Get notes composer vc
     _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-    if (!parentVC) return nil;
+    if (![parentVC respondsToSelector:@selector(delegate)]) return nil;
 
     IGDirectNotesComposerViewController *composerVC = parentVC.delegate;
     if (!composerVC) return nil;
 
     // Get current theme model
-    IGNotesCustomThemeCreationModel *model = [composerVC valueForKey:@"_selectedCustomThemeCreationModel"];
+    // A property since 453; 418 has the same getter backed by an underscored ivar
+    IGNotesCustomThemeCreationModel *model = nil;
+    @try {
+        model = [composerVC valueForKey:@"selectedCustomThemeCreationModel"];
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Notes: couldn't read selected theme: %@", exception.reason);
+    }
     if (!model) {
         // Create new note theme model
         model = [[%c(IGNotesCustomThemeCreationModel) alloc] init];
@@ -404,10 +414,10 @@ static char targetStaticRef[] = "target";
 
 %new - (void)sciCommitThemeModel:(IGNotesCustomThemeCreationModel *)model {
     _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-    if (!parentVC) return;
+    if (![parentVC respondsToSelector:@selector(delegate)]) return;
 
     IGDirectNotesComposerViewController *composerVC = parentVC.delegate;
-    if (!composerVC) return;
+    if (![composerVC respondsToSelector:@selector(notesBubbleEditorViewControllerDidUpdateWithCustomThemeCreationModel:)]) return;
 
     // Apply custom notes theme
     [composerVC notesBubbleEditorViewControllerDidUpdateWithCustomThemeCreationModel:model];
@@ -446,3 +456,18 @@ static char targetStaticRef[] = "target";
     [self sciCommitThemeModel:model];
 }
 %end
+%end
+
+%ctor {
+    %init;
+
+    Class paletteClass = objc_getClass("_TtC26IGNotesBubbleCreationSwift41IGDirectNotesBubbleEditorColorPaletteView")
+                      ?: objc_getClass("_TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView");
+
+    if (paletteClass) {
+        %init(NotesPalette, _TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView = paletteClass);
+    }
+    else {
+        NSLog(@"[SCInsta] Notes: color palette view not found, custom note themes are unavailable");
+    }
+}
