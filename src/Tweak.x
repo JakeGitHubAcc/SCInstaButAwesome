@@ -178,6 +178,19 @@ shouldPersistLastBugReportId:(id)arg6
 - (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
 %end
 
+// Instagram 453+ moved story screenshot handling out of the viewer
+// Demangled name: IGStoryViewerScreenshotHandler.IGStoryViewerScreenshotHandler
+%hook _TtC30IGStoryViewerScreenshotHandler30IGStoryViewerScreenshotHandler
+- (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
+- (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
+%end
+
+// Demangled name: IGStoryScreenshotObserverHandler.IGStoryScreenshotObserverHandler
+%hook _TtC32IGStoryScreenshotObserverHandler32IGStoryScreenshotObserverHandler
+- (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
+- (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
+%end
+
 %hook IGSundialFeedViewController
 - (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
 - (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
