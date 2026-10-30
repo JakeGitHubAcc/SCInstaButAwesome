@@ -1,4 +1,5 @@
 #import "TweakSettings.h"
+#import "../Features/ProfileAnalyzer/SCIProfileAnalyzerViewController.h"
 
 @implementation SCITweakSettings
 
@@ -189,6 +190,16 @@
                                                 [SCISetting switchCellWithTitle:@"Confirm sticker interaction" subtitle:@"Shows an alert when you click a sticker on someone's story to confirm the action" defaultsKey:@"sticker_interact_confirm"]
                                             ]
                                         }]
+                ]
+            ]
+        },
+        @{
+            @"header": @"Tools",
+            @"rows": @[
+                [SCISetting navigationCellWithTitle:@"Profile analyzer"
+                                           subtitle:@"Mutuals, who doesn't follow back, and follower changes over time"
+                                               icon:[SCISymbol symbolWithName:@"person.2"]
+                                     viewController:[SCIProfileAnalyzerViewController new]
                 ]
             ]
         },
