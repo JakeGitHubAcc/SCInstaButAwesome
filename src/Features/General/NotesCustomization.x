@@ -1,4 +1,5 @@
 #import "../../Utils.h"
+#import "NotesThemeRuntime.h"
 
 static char targetStaticRef[] = "target";
 
@@ -39,6 +40,12 @@ static char targetStaticRef[] = "target";
         
     }
 
+    // Seasonal and limited time options, available any day
+    if ([SCIUtils getBoolPref:@"notes_unlock_all_themes"]) {
+        NSArray *enabled = [SCINotesThemeRuntime enableAllFeatureFlagsOnModel:support];
+        NSLog(@"[SCInsta] Notes: enabled feature flags: %@", enabled);
+    }
+
     return %orig(model, support, animation, listener, delegate, type, session);
 }
 %end
@@ -48,6 +55,7 @@ static char targetStaticRef[] = "target";
 %property (nonatomic, copy) UIColor *backgroundColor;
 %property (nonatomic, copy) UIColor *textColor;
 %property (nonatomic, copy) NSString *emojiText;
+%property (nonatomic, copy) UIColor *gradientStartColor;
 
 - (void)didMoveToWindow {
     %orig;
@@ -154,12 +162,27 @@ static char targetStaticRef[] = "target";
         }] forControlEvents:UIControlEventTouchUpInside];
 
 
+        // More button (gradients and presets)
+        UIButton *moreButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        moreButton.configuration = config;
+        moreButton.translatesAutoresizingMaskIntoConstraints = NO;
+        moreButton.tintColor = [SCIUtils SCIColor_Primary];
+        [moreButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+        moreButton.menu = [self sciMoreMenu];
+        moreButton.showsMenuAsPrimaryAction = YES;
+        [moreButton sizeToFit];
+
         // Create stack view
-        UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[leftButton, middleButton, rightButton]];
+        UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[leftButton, middleButton, rightButton, moreButton]];
         stack.axis = UILayoutConstraintAxisHorizontal;
         stack.spacing = 15.0;
         stack.alignment = UIStackViewAlignmentCenter;
-        stack.distribution = UIStackViewDistributionFillEqually;
+        stack.distribution = UIStackViewDistributionFill;
+
+        // Text buttons share the width, the more button stays square
+        [middleButton.widthAnchor constraintEqualToAnchor:leftButton.widthAnchor].active = YES;
+        [rightButton.widthAnchor constraintEqualToAnchor:leftButton.widthAnchor].active = YES;
+        [moreButton.widthAnchor constraintEqualToConstant:44.0].active = YES;
 
         // Find max height among arranged subviews
         CGFloat maxHeight = 0.0;
@@ -197,12 +220,15 @@ static char targetStaticRef[] = "target";
     colorPickerController.supportsAlpha = NO;
 
     // Show last picked color for type
-    if ([target isEqualToString:@"Background"]) {
-        colorPickerController.selectedColor = self.backgroundColor;
+    if ([target isEqualToString:@"Background"] || [target isEqualToString:@"GradientStart"]) {
+        if (self.backgroundColor) colorPickerController.selectedColor = self.backgroundColor;
     }
     else if ([target isEqualToString:@"Text"]) {
         colorPickerController.selectedColor = self.textColor;
     }
+
+    if ([target isEqualToString:@"GradientStart"]) colorPickerController.title = @"Gradient start color";
+    else if ([target isEqualToString:@"GradientEnd"]) colorPickerController.title = @"Gradient end color";
     
     UIViewController *presentingVC = [SCIUtils nearestViewControllerForView:self];
     
@@ -229,6 +255,13 @@ static char targetStaticRef[] = "target";
     NSString *target = objc_getAssociatedObject(bubbleEditorVC, &targetStaticRef);
     if (!target) return;
     
+    // Gradient colors are applied once both are picked
+    if ([target isEqualToString:@"GradientStart"]) {
+        self.gradientStartColor = color;
+        return;
+    }
+    if ([target isEqualToString:@"GradientEnd"]) return;
+
     // Update saved color target
     if ([target isEqualToString:@"Background"]) {
         self.backgroundColor = color;
@@ -240,38 +273,120 @@ static char targetStaticRef[] = "target";
     [self applySCICustomTheme:target];
 };
 
-%new - (void)applySCICustomTheme:(NSString *)target {
+%new - (void)colorPickerViewControllerDidFinish:(UIColorPickerViewController *)viewController {
+    UIViewController *presentingVC = [SCIUtils nearestViewControllerForView:self];
+    NSString *target = objc_getAssociatedObject(presentingVC, &targetStaticRef);
+
+    if ([target isEqualToString:@"GradientStart"]) {
+        if (!self.gradientStartColor) self.gradientStartColor = viewController.selectedColor;
+
+        // Wait for this picker to finish dismissing before showing the next one
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self presentColorPicker:@"GradientEnd"];
+        });
+    }
+    else if ([target isEqualToString:@"GradientEnd"]) {
+        objc_setAssociatedObject(presentingVC, &targetStaticRef, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        UIColor *start = self.gradientStartColor ?: self.backgroundColor ?: [UIColor blackColor];
+        [self applySCIThemeWithBackground:start text:self.textColor emoji:self.emojiText gradientEnd:viewController.selectedColor];
+    }
+}
+
+%new - (UIMenu *)sciMoreMenu {
+    __weak typeof(self) weakSelf = self;
+
+    UIAction *customGradient = [UIAction actionWithTitle:@"Custom gradient…" image:[UIImage systemImageNamed:@"paintpalette"] identifier:nil handler:^(UIAction *action) {
+        weakSelf.gradientStartColor = nil;
+        [weakSelf presentColorPicker:@"GradientStart"];
+    }];
+
+    NSMutableArray *gradientActions = [NSMutableArray arrayWithObject:customGradient];
+    for (NSDictionary *preset in [SCINotesThemeRuntime gradientPresets]) {
+        [gradientActions addObject:[UIAction actionWithTitle:[NSString stringWithFormat:@"%@ %@", preset[@"emoji"], preset[@"name"]] image:nil identifier:nil handler:^(UIAction *action) {
+            [weakSelf applySCIPreset:preset];
+        }]];
+    }
+
+    NSMutableArray *seasonalActions = [NSMutableArray array];
+    for (NSDictionary *preset in [SCINotesThemeRuntime seasonalPresets]) {
+        [seasonalActions addObject:[UIAction actionWithTitle:[NSString stringWithFormat:@"%@ %@", preset[@"emoji"], preset[@"name"]] image:nil identifier:nil handler:^(UIAction *action) {
+            [weakSelf applySCIPreset:preset];
+        }]];
+    }
+
+    UIAction *swap = [UIAction actionWithTitle:@"Swap background and text" image:[UIImage systemImageNamed:@"arrow.left.arrow.right"] identifier:nil handler:^(UIAction *action) {
+        UIColor *background = weakSelf.backgroundColor;
+        [weakSelf applySCIThemeWithBackground:weakSelf.textColor ?: [UIColor whiteColor] text:background ?: [UIColor blackColor] emoji:weakSelf.emojiText gradientEnd:nil];
+    }];
+
+    return [UIMenu menuWithChildren:@[
+        [UIMenu menuWithTitle:@"Gradient" image:[UIImage systemImageNamed:@"circle.lefthalf.filled"] identifier:nil options:0 children:gradientActions],
+        [UIMenu menuWithTitle:@"Seasonal" image:[UIImage systemImageNamed:@"leaf"] identifier:nil options:0 children:seasonalActions],
+        swap
+    ]];
+}
+
+%new - (void)applySCIPreset:(NSDictionary *)preset {
+    [self applySCIThemeWithBackground:preset[@"background"] text:preset[@"text"] emoji:preset[@"emoji"] gradientEnd:preset[@"gradientEnd"]];
+}
+
+%new - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd {
+    if (background) self.backgroundColor = background;
+    if (text) self.textColor = text;
+    if (emoji) self.emojiText = emoji;
+
+    IGNotesCustomThemeCreationModel *model = [self sciCurrentThemeModel];
+    if (!model) return;
+
+    [model setValue:self.backgroundColor forKey:@"backgroundColor"];
+    if (self.textColor) {
+        [model setValue:self.textColor forKey:@"textColor"];
+        [model setValue:self.textColor forKey:@"secondaryTextColor"];
+    }
+    [model setValue:self.emojiText forKey:@"customEmoji"];
+
+    if (gradientEnd) {
+        BOOL applied = [SCINotesThemeRuntime applyGradientFrom:self.backgroundColor to:gradientEnd onThemeModel:model];
+
+        if (!applied && ![[NSUserDefaults standardUserDefaults] boolForKey:@"notes_gradient_unsupported_shown"]) {
+            [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"notes_gradient_unsupported_shown"];
+
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Gradients not available"
+                                                                           message:@"This Instagram version has no gradient field for note themes, so only the first color is used.\n\nTo help add support, go to SCInsta settings > Debug > Copy note theme fields and share the result."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [[SCIUtils nearestViewControllerForView:self] presentViewController:alert animated:YES completion:nil];
+        }
+    }
+
+    [self sciCommitThemeModel:model];
+}
+
+%new - (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel {
     // Get notes composer vc
     _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
-    if (!parentVC) return;
+    if (!parentVC) return nil;
 
     IGDirectNotesComposerViewController *composerVC = parentVC.delegate;
-    if (!composerVC) return;
+    if (!composerVC) return nil;
 
     // Get current theme model
     IGNotesCustomThemeCreationModel *model = [composerVC valueForKey:@"_selectedCustomThemeCreationModel"];
     if (!model) {
         // Create new note theme model
         model = [[%c(IGNotesCustomThemeCreationModel) alloc] init];
-        if (!model) return;
     }
 
-    //SCILog(@"Current note theme model: %@", model);
-    [model setValue:[composerVC valueForKey:@"_composerText"] forKey:@"customEmoji"];
+    return model;
+}
 
-    // Update saved color target
-    if ([target isEqualToString:@"Background"]) {
-        [model setValue:self.backgroundColor forKey:@"backgroundColor"];
-    }
-    else if ([target isEqualToString:@"Text"]) {
-        [model setValue:self.textColor forKey:@"textColor"];
-        [model setValue:self.textColor forKey:@"secondaryTextColor"];  
-    }
+%new - (void)sciCommitThemeModel:(IGNotesCustomThemeCreationModel *)model {
+    _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController *parentVC = [SCIUtils nearestViewControllerForView:self];
+    if (!parentVC) return;
 
-    // Always set emoji to prevent it being overwritten
-    [model setValue:self.emojiText forKey:@"customEmoji"];  
-
-    //SCILog(@"Updated note theme model: %@", model);
+    IGDirectNotesComposerViewController *composerVC = parentVC.delegate;
+    if (!composerVC) return;
 
     // Apply custom notes theme
     [composerVC notesBubbleEditorViewControllerDidUpdateWithCustomThemeCreationModel:model];
@@ -289,5 +404,24 @@ static char targetStaticRef[] = "target";
             [obj setSecondaryButtonEnabled:YES];
         }
     }];
+}
+
+%new - (void)applySCICustomTheme:(NSString *)target {
+    IGNotesCustomThemeCreationModel *model = [self sciCurrentThemeModel];
+    if (!model) return;
+
+    // Update saved color target
+    if ([target isEqualToString:@"Background"]) {
+        [model setValue:self.backgroundColor forKey:@"backgroundColor"];
+    }
+    else if ([target isEqualToString:@"Text"]) {
+        [model setValue:self.textColor forKey:@"textColor"];
+        [model setValue:self.textColor forKey:@"secondaryTextColor"];  
+    }
+
+    // Always set emoji to prevent it being overwritten
+    [model setValue:self.emojiText forKey:@"customEmoji"];  
+
+    [self sciCommitThemeModel:model];
 }
 %end

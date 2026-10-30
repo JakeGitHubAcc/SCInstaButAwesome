@@ -434,8 +434,15 @@
 @property (nonatomic, copy) UIColor *textColor; // new
 @property (nonatomic, copy) NSString *emojiText; // new
 
+@property (nonatomic, copy) UIColor *gradientStartColor; // new
+
 - (void)presentColorPicker:(NSString *)target; // new
 - (void)applySCICustomTheme:(NSString *)target; // new
+- (UIMenu *)sciMoreMenu; // new
+- (void)applySCIPreset:(NSDictionary *)preset; // new
+- (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd; // new
+- (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel; // new
+- (void)sciCommitThemeModel:(IGNotesCustomThemeCreationModel *)model; // new
 @end
 
 @interface _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController : UIViewController
