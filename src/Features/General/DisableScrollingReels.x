@@ -33,4 +33,13 @@
         %orig(enabled);
     }
 }
+
+// Instagram 453+
+- (void)setUserEnabled:(BOOL)enabled {
+    %orig([SCIUtils getBoolPref:@"disable_scrolling_reels"] ? NO : enabled);
+}
+
+- (BOOL)isEnabled {
+    return [SCIUtils getBoolPref:@"disable_scrolling_reels"] ? NO : %orig;
+}
 %end

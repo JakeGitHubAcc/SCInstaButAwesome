@@ -31,16 +31,28 @@
 - (void)_onLikeButtonPressed:(id)arg1 {
     CONFIRMPOSTLIKE(%orig);
 }
+
+// Instagram 453+
+- (void)_onLikeButtonPressed {
+    CONFIRMPOSTLIKE(%orig);
+}
 %end
 %hook IGFeedPhotoView
 - (void)_onDoubleTap:(id)arg1 {
     CONFIRMPOSTLIKE(%orig);
 }
 %end
+%group SCIRenamed_IGVideoPlayerOverlayContainerView
 %hook IGVideoPlayerOverlayContainerView
 - (void)_handleDoubleTapGesture:(id)arg1 {
     CONFIRMPOSTLIKE(%orig);
 }
+
+// Instagram 453+
+- (void)handleDoubleTapGesture:(id)arg1 {
+    CONFIRMPOSTLIKE(%orig);
+}
+%end
 %end
 
 // Liking reels
@@ -97,6 +109,7 @@
 %end
 
 // Liking stories
+%group SCIRenamed_IGStoryFullscreenDefaultFooterView
 %hook IGStoryFullscreenDefaultFooterView
 - (void)_handleLikeTapped {
     CONFIRMPOSTLIKE(%orig);
@@ -116,8 +129,15 @@
 
     if (![SCIUtils getBoolPref:@"like_confirm"]) return;
 
-    UIButton *likeButton = [self valueForKey:@"likeButton"];
-    if (!likeButton) return;
+    // The Swift footer in 453+ may not expose likeButton to KVC
+    UIButton *likeButton = nil;
+    @try {
+        likeButton = [self valueForKey:@"likeButton"];
+    }
+    @catch (NSException *exception) {
+        return;
+    }
+    if (![likeButton isKindOfClass:[UIButton class]]) return;
 
     // 129115 = L(12) I(9) K(11) E(5)
     static NSInteger kOverlayTag = 129115;
@@ -141,6 +161,7 @@
     }];
 }
 %end
+%end
 
 // DM like button (seems to be hidden)
 %hook IGDirectThreadViewController
@@ -148,3 +169,17 @@
     CONFIRMPOSTLIKE(%orig);
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC25IGModernFeedVideoOverlays33IGVideoPlayerOverlayContainerView") ?: objc_getClass("IGVideoPlayerOverlayContainerView");
+        if (cls) %init(SCIRenamed_IGVideoPlayerOverlayContainerView, IGVideoPlayerOverlayContainerView = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC20IGStoryDefaultFooter34IGStoryFullscreenDefaultFooterView") ?: objc_getClass("IGStoryFullscreenDefaultFooterView");
+        if (cls) %init(SCIRenamed_IGStoryFullscreenDefaultFooterView, IGStoryFullscreenDefaultFooterView = cls);
+    }
+}

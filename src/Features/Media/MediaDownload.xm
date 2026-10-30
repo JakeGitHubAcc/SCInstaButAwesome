@@ -111,6 +111,7 @@ static void initDownloaders () {
 /* * Reels * */
 
 // Download reels (photos)
+%group SCIRenamed_IGSundialViewerPhotoView
 %hook IGSundialViewerPhotoView
 - (void)didMoveToSuperview {
     %orig;
@@ -148,6 +149,7 @@ static void initDownloaders () {
                                  fileExtension:[[photoUrl lastPathComponent]pathExtension]
                                       hudLabel:nil];
 }
+%end
 %end
 
 // Download reels (videos)
@@ -366,3 +368,13 @@ static void initDownloaders () {
                                       hudLabel:@"Loading"];
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC32IGSundialViewerMediaDisplayViews24IGSundialViewerPhotoView") ?: objc_getClass("IGSundialViewerPhotoView");
+        if (cls) %init(SCIRenamed_IGSundialViewerPhotoView, IGSundialViewerPhotoView = cls);
+    }
+}
