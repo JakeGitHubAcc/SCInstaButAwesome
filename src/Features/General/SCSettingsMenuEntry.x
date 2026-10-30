@@ -2,11 +2,12 @@
 #import "../../Settings/SCISettingsViewController.h"
 
 // Show SCInsta tweak settings by holding on the settings/more icon under profile for ~1 second
+%group SCIRenamed_IGBadgedNavigationButton
 %hook IGBadgedNavigationButton
 - (void)didMoveToWindow {
     %orig;
 
-    if ([self.accessibilityIdentifier isEqualToString:@"profile-more-button"]) {
+    if ([((UIView *)self).accessibilityIdentifier isEqualToString:@"profile-more-button"]) {
         [self addLongPressGestureRecognizer];
     }
 
@@ -14,7 +15,7 @@
 }
 
 %new - (void)addLongPressGestureRecognizer {
-    if ([self.gestureRecognizers count] == 0) {
+    if ([((UIView *)self).gestureRecognizers count] == 0) {
         NSLog(@"[SCInsta] Adding tweak settings long press gesture recognizer");
 
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
@@ -29,6 +30,7 @@
     [SCIUtils showSettingsVC:[self window]];
 }
 %end
+%end
 
 // Quick access to tweak settings by holding on home tab button
 %hook IGTabBarButton
@@ -36,7 +38,7 @@
     %orig;
 
     // Only work on home/feed tab
-    if (![self.accessibilityIdentifier isEqualToString:@"mainfeed-tab"]) return;
+    if (![((UIView *)self).accessibilityIdentifier isEqualToString:@"mainfeed-tab"]) return;
     
     if ([SCIUtils getBoolPref:@"settings_shortcut"]) {
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
@@ -56,3 +58,13 @@
     [SCIUtils showSettingsVC:[self window]];
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC19IGProfileNavigation24IGBadgedNavigationButton") ?: objc_getClass("IGBadgedNavigationButton");
+        if (cls) %init(SCIRenamed_IGBadgedNavigationButton, IGBadgedNavigationButton = cls);
+    }
+}

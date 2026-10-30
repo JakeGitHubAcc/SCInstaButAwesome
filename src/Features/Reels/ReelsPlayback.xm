@@ -69,4 +69,11 @@
         %orig(headphones);
     }
 }
+
+// Instagram 453+ dropped the argument
+- (void)_didUnplugHeadphones {
+    if (![SCIUtils getBoolPref:@"disable_auto_unmuting_reels"]) {
+        %orig;
+    }
+}
 %end

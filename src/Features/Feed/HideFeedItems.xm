@@ -132,6 +132,7 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
     return filteredObjs;
 }
 %end
+%group SCIRenamed_IGSundialFeedDataSource
 %hook IGSundialFeedDataSource
 - (NSArray *)objectsForListAdapter:(id)arg1 {
     NSArray *filteredList = removeItemsInList(%orig, NO);
@@ -144,6 +145,8 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
     return filteredList;
 }
 %end
+%end
+%group SCIRenamed_IGContextualFeedViewController
 %hook IGContextualFeedViewController
 - (NSArray *)objectsForListAdapter:(id)arg1 {
     if ([SCIUtils getBoolPref:@"hide_ads"]) {
@@ -152,6 +155,7 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
 
     return %orig;
 }
+%end
 %end
 %hook IGVideoFeedViewController
 - (NSArray *)objectsForListAdapter:(id)arg1 {
@@ -162,6 +166,7 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
     return %orig;
 }
 %end
+%group SCIRenamed_IGChainingFeedViewController
 %hook IGChainingFeedViewController
 - (NSArray *)objectsForListAdapter:(id)arg1 {
     if ([SCIUtils getBoolPref:@"hide_ads"]) {
@@ -170,6 +175,7 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
 
     return %orig;
 }
+%end
 %end
 %hook IGStoryAdPool
 - (id)initWithUserSession:(id)arg1 {
@@ -332,3 +338,21 @@ static NSArray *removeItemsInList(NSArray *list, BOOL isFeed) {
     return;
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC18IGPostChainingFeed28IGChainingFeedViewController") ?: objc_getClass("IGChainingFeedViewController");
+        if (cls) %init(SCIRenamed_IGChainingFeedViewController, IGChainingFeedViewController = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC30IGContextualFeedViewController30IGContextualFeedViewController") ?: objc_getClass("IGContextualFeedViewController");
+        if (cls) %init(SCIRenamed_IGContextualFeedViewController, IGContextualFeedViewController = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC23IGSundialFeedDataSource23IGSundialFeedDataSource") ?: objc_getClass("IGSundialFeedDataSource");
+        if (cls) %init(SCIRenamed_IGSundialFeedDataSource, IGSundialFeedDataSource = cls);
+    }
+}

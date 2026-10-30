@@ -130,9 +130,39 @@
 
     return %orig(arg1, [config copy], arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
+
+// Instagram 453+
+- (id)initWithUserSession:(id)arg1
+                   config:(IGDirectMediaPickerConfig *)config
+             capabilities:(id)arg3
+           threadMetadata:(id)arg4
+            messageSender:(id)arg5
+   cutoutOptimisticSender:(id)arg6
+cutoutStickerFactorySender:(id)arg7
+    threadAnalyticsLogger:(id)arg8
+     multimodalPerfLogger:(id)arg9
+     localSendSpeedLogger:(id)arg10
+   sendAttributionFactory:(id)arg11
+{
+    if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
+        NSLog(@"[SCInsta] Hiding meta ai: imagine tile in media picker");
+
+        @try {
+            IGDirectMediaPickerGalleryConfig *galleryConfig = [config valueForKey:@"galleryConfig"];
+
+            [galleryConfig setValue:0 forKey:@"isImagineEntryPointEnabled"];
+        }
+        @catch (NSException *exception) {
+            NSLog(@"[SCInsta] WARNING: %@\n\nFull object: %@", exception.reason, config);
+        }
+    }
+
+    return %orig(arg1, [config copy], arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
 %end
 
 // Write with meta ai in message composer
+%group SCIRenamed_IGDirectComposer
 %hook IGDirectComposer
 - (id)initWithLayoutSpecProvider:(id)arg1
         userLauncherSetProviding:(id)arg2
@@ -151,6 +181,28 @@
            shouldUpdateModeLater:(BOOL)arg6
 {
     return %orig(arg1, arg2, [self patchConfig:config], arg4, arg5, arg6);
+}
+
+// Instagram 453+
+- (id)initWithLayoutSpecProvider:(id)arg1
+                     userSession:(id)arg2
+                    mobileConfig:(id)arg3
+                          config:(IGDirectComposerConfig *)config
+                           style:(id)arg5
+                            text:(id)arg6
+{
+    return %orig(arg1, arg2, arg3, [self patchConfig:config], arg5, arg6);
+}
+
+- (id)initWithLayoutSpecProvider:(id)arg1
+                     userSession:(id)arg2
+                    mobileConfig:(id)arg3
+                          config:(IGDirectComposerConfig *)config
+                           style:(id)arg5
+                            text:(id)arg6
+           shouldUpdateModeLater:(BOOL)arg7
+{
+    return %orig(arg1, arg2, arg3, [self patchConfig:config], arg5, arg6, arg7);
 }
 
 - (void)setConfig:(IGDirectComposerConfig *)config {
@@ -176,6 +228,7 @@
 
     return [config copy];
 }
+%end
 %end
 
 // Direct sticker tray picker view
@@ -218,6 +271,26 @@
                           directNuxManager:(id)arg6
                        sessionUserDefaults:(id)arg7
                                launcherSet:(id)arg8
+                               userSession:(id)arg9
+                                tapHandler:(id)arg10
+{
+    // 31: Restyle
+    // 41: Make AI image
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"NOT (SELF IN %@)", @[ @(31), @(41) ]];
+    NSArray *newOptions = [options filteredArrayUsingPredicate:predicate];
+
+    return %orig([newOptions copy], arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
+}
+
+// Instagram 453+ (launcherSet became mobileConfig)
++ (id)menuConfigurationWithEligibleOptions:(id)options
+                          messageViewModel:(id)arg2
+                               contentType:(id)arg3
+                                 isSticker:(_Bool)arg4
+                            isMusicSticker:(_Bool)arg5
+                          directNuxManager:(id)arg6
+                       sessionUserDefaults:(id)arg7
+                              mobileConfig:(id)arg8
                                userSession:(id)arg9
                                 tapHandler:(id)arg10
 {
@@ -368,6 +441,17 @@
 
     return %orig;
 }
+
+// Instagram 453+
+- (id)initWithLauncherSet:(id)arg1 hasSearchPrefix:(BOOL)arg2 floatsAsCenteredPill:(BOOL)arg3 {
+    if ([SCIUtils getBoolPref:@"hide_meta_ai"]) {
+        NSLog(@"[SCInsta] Hiding meta ai: suggested ai searches comment carousel");
+
+        return nil;
+    }
+
+    return %orig;
+}
 %end
 
 /////////////////////////////////////////////////////////////////////////////
@@ -394,10 +478,17 @@
 %end
 
 // AI generated fonts in text entry
+%group SCIRenamed_IGCreationTextToolView
 %hook IGCreationTextToolView
 - (id)initWithMenuConfiguration:(unsigned long long)configuration userSession:(id)session creationEntryPoint:(long long)point isAIFontsEnabled:(_Bool)enabled genAINuxManager:(id)manager showFontBadge:(_Bool)badge {
     return %orig(configuration, session, point, [SCIUtils getBoolPref:@"hide_meta_ai"] ? false : enabled, manager, badge);
 }
+
+// Instagram 453+ (userSession became launcherSet)
+- (id)initWithMenuConfiguration:(unsigned long long)configuration launcherSet:(id)launcherSet creationEntryPoint:(long long)point isAIFontsEnabled:(_Bool)enabled genAINuxManager:(id)manager showFontBadge:(_Bool)badge {
+    return %orig(configuration, launcherSet, point, [SCIUtils getBoolPref:@"hide_meta_ai"] ? false : enabled, manager, badge);
+}
+%end
 %end
 
 // Text rewrite in text entry
@@ -570,3 +661,17 @@
     return [filteredObjs copy];
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC30IGStoryPostCaptureTextControls22IGCreationTextToolView") ?: objc_getClass("IGCreationTextToolView");
+        if (cls) %init(SCIRenamed_IGCreationTextToolView, IGCreationTextToolView = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC16IGDirectComposer16IGDirectComposer") ?: objc_getClass("IGDirectComposer");
+        if (cls) %init(SCIRenamed_IGDirectComposer, IGDirectComposer = cls);
+    }
+}

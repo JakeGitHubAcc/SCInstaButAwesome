@@ -178,6 +178,19 @@ shouldPersistLastBugReportId:(id)arg6
 - (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
 %end
 
+// Instagram 453+ moved story screenshot handling out of the viewer
+// Demangled name: IGStoryViewerScreenshotHandler.IGStoryViewerScreenshotHandler
+%hook _TtC30IGStoryViewerScreenshotHandler30IGStoryViewerScreenshotHandler
+- (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
+- (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
+%end
+
+// Demangled name: IGStoryScreenshotObserverHandler.IGStoryScreenshotObserverHandler
+%hook _TtC32IGStoryScreenshotObserverHandler32IGStoryScreenshotObserverHandler
+- (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
+- (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
+%end
+
 %hook IGSundialFeedViewController
 - (void)screenshotObserverDidSeeScreenshotTaken:(id)arg1 { VOID_HANDLESCREENSHOT(%orig); }
 - (void)screenshotObserverDidSeeActiveScreenCapture:(id)arg1 event:(NSInteger)arg2 { VOID_HANDLESCREENSHOT(%orig); }
@@ -346,6 +359,7 @@ shouldPersistLastBugReportId:(id)arg6
 %end
 
 // Direct suggested chats (inbox view)
+%group SCIRenamed_IGDirectInboxListAdapterDataSource
 %hook IGDirectInboxListAdapterDataSource
 - (id)objectsForListAdapter:(id)arg1 {
     NSArray *originalObjs = %orig();
@@ -414,8 +428,10 @@ shouldPersistLastBugReportId:(id)arg6
     return [filteredObjs copy];
 }
 %end
+%end
 
 // Explore page results
+%group SCIRenamed_IGSearchListKitDataSource
 %hook IGSearchListKitDataSource
 - (id)objectsForListAdapter:(id)arg1 {
     NSArray *originalObjs = %orig();
@@ -504,8 +520,10 @@ shouldPersistLastBugReportId:(id)arg6
     return [filteredObjs copy];
 }
 %end
+%end
 
 // Story tray
+%group SCIRenamed_IGMainStoryTrayDataSource
 %hook IGMainStoryTrayDataSource
 - (id)allItemsForTrayUsingCachedValue:(BOOL)cached {
     NSArray *originalObjs = %orig(cached);
@@ -545,6 +563,7 @@ shouldPersistLastBugReportId:(id)arg6
 
     return [filteredObjs copy];
 }
+%end
 %end
 
 // Story tray expanded footer (Suggested accounts to follow)
@@ -634,6 +653,7 @@ shouldPersistLastBugReportId:(id)arg6
 }
 %end
 
+%group SCIRenamed_IGSundialViewerVerticalUFI
 %hook IGSundialViewerVerticalUFI
 - (void)_didTapLikeButton:(id)arg1 {
     if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
@@ -674,6 +694,48 @@ shouldPersistLastBugReportId:(id)arg6
         return %orig;
     }
 }
+
+// Instagram 453+ (Swift rewrite)
+- (void)didTapLikeButton {
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
+        NSLog(@"[SCInsta] Confirm reels like triggered");
+
+        [SCIUtils showConfirmation:^(void) { %orig; }];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)didLongPressLikeButton:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"like_confirm_reels"]) {
+        NSLog(@"[SCInsta] Confirm reels like triggered (long press ignored)");
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)didTapRepostButton {
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered");
+
+        [SCIUtils showConfirmation:^(void) { %orig; }];
+    }
+    else {
+        return %orig;
+    }
+}
+
+- (void)didLongPressRepostButton:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"repost_confirm"]) {
+        NSLog(@"[SCInsta] Confirm repost triggered (long press ignored)");
+    }
+    else {
+        return %orig;
+    }
+}
+%end
 %end
 
 /////////////////////////////////////////////////////////////////////////////
@@ -713,3 +775,25 @@ shouldPersistLastBugReportId:(id)arg6
     return %orig;
 }
 %end
+
+%ctor {
+    %init;
+
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC34IGDirectInboxListAdapterDataSource34IGDirectInboxListAdapterDataSource") ?: objc_getClass("IGDirectInboxListAdapterDataSource");
+        if (cls) %init(SCIRenamed_IGDirectInboxListAdapterDataSource, IGDirectInboxListAdapterDataSource = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC25IGMainStoryTrayDataSource25IGMainStoryTrayDataSource") ?: objc_getClass("IGMainStoryTrayDataSource");
+        if (cls) %init(SCIRenamed_IGMainStoryTrayDataSource, IGMainStoryTrayDataSource = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC15IGGenericSearch25IGSearchListKitDataSource") ?: objc_getClass("IGSearchListKitDataSource");
+        if (cls) %init(SCIRenamed_IGSearchListKitDataSource, IGSearchListKitDataSource = cls);
+    }
+    {
+        Class cls = objc_getClass("_TtC26IGSundialViewerVerticalUFI26IGSundialViewerVerticalUFI") ?: objc_getClass("IGSundialViewerVerticalUFI");
+        if (cls) %init(SCIRenamed_IGSundialViewerVerticalUFI, IGSundialViewerVerticalUFI = cls);
+    }
+}

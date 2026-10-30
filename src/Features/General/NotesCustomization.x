@@ -3,6 +3,7 @@
 
 static char targetStaticRef[] = "target";
 
+%group SCIRenamed_IGDirectNotesCreationView
 %hook IGDirectNotesCreationView
 - (id)initWithViewModel:(id)model
          featureSupport:(IGNotesCreationFeatureSupportModel *)support
@@ -48,6 +49,7 @@ static char targetStaticRef[] = "target";
 
     return %orig(model, support, animation, listener, delegate, type, session);
 }
+%end
 %end
 
 // Demangled name: IGNotesBubbleCreationSwift.IGDirectNotesBubbleEditorColorPaletteView (453+)
@@ -463,6 +465,12 @@ typedef _TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView SC
 %end
 
 %ctor {
+    // Classes Instagram renamed (mostly rewritten in Swift); the newest name is tried first
+    {
+        Class cls = objc_getClass("_TtC25IGDirectNotesCreationView25IGDirectNotesCreationView") ?: objc_getClass("IGDirectNotesCreationView");
+        if (cls) %init(SCIRenamed_IGDirectNotesCreationView, IGDirectNotesCreationView = cls);
+    }
+
     %init;
 
     Class paletteClass = objc_getClass("_TtC26IGNotesBubbleCreationSwift41IGDirectNotesBubbleEditorColorPaletteView")

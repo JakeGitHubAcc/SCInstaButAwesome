@@ -24,6 +24,17 @@
 }
 %end
 
+// Instagram 453+ moved the voice message button handling here
+%hook IGDirectComposerButtonController
+- (void)_didLongPressVoiceMessageButton:(id)arg1 {
+    if ([SCIUtils getBoolPref:@"voice_message_confirm"]) {
+        return;
+    } else {
+        return %orig;
+    }
+}
+%end
+
 // Demangled name: IGDirectAIVoiceUIKit.CompactBarContentView
 %hook _TtC20IGDirectAIVoiceUIKitP33_5754F7617E0D924F9A84EFA352BBD29A21CompactBarContentView
 - (void)didTapSend {
