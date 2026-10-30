@@ -3,6 +3,8 @@
 static NSUInteger const kMaxEvents = 5000;
 static NSUInteger const kMaxScans = 200;
 
+NSNotificationName const SCIAnalyzerStoreDidChangeNotification = @"SCIAnalyzerStoreDidChangeNotification";
+
 @interface SCIAnalyzerStore ()
 @property (nonatomic, strong) NSURL *directory;
 
@@ -13,6 +15,17 @@ static NSUInteger const kMaxScans = 200;
 @end
 
 @implementation SCIAnalyzerStore
+
++ (instancetype)storeForUserPK:(NSString *)pk {
+    static NSMutableDictionary<NSString *, SCIAnalyzerStore *> *stores;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ stores = [NSMutableDictionary dictionary]; });
+
+    @synchronized (stores) {
+        if (!stores[pk]) stores[pk] = [[SCIAnalyzerStore alloc] initWithUserPK:pk];
+        return stores[pk];
+    }
+}
 
 - (instancetype)initWithUserPK:(NSString *)pk {
     self = [super init];
@@ -176,9 +189,12 @@ static NSUInteger const kMaxScans = 200;
     return event;
 }
 
-- (void)saveScanWithFollowers:(NSArray<NSDictionary *> *)followers following:(NSArray<NSDictionary *> *)following {
+- (NSArray<NSDictionary *> *)saveScanWithFollowers:(NSArray<NSDictionary *> *)followers following:(NSArray<NSDictionary *> *)following {
     NSNumber *now = @([[NSDate date] timeIntervalSince1970]);
-    NSDictionary *old = self.latest;
+    NSDictionary *old = [self.latest copy];
+    if (!following) following = old[@"following"] ?: @[];
+
+    NSArray *lostFollowers = @[];
 
     if (old) {
         NSMutableArray *newEvents = [NSMutableArray array];
@@ -193,7 +209,8 @@ static NSUInteger const kMaxScans = 200;
 
         for (NSDictionary *user in [SCIAnalyzerStore users:followers inSet:oldFollowerPKs matching:NO])
             [newEvents addObject:[self eventOfType:@"new_follower" user:user old:nil new:nil date:now]];
-        for (NSDictionary *user in [SCIAnalyzerStore users:oldFollowers inSet:newFollowerPKs matching:NO])
+        lostFollowers = [SCIAnalyzerStore users:oldFollowers inSet:newFollowerPKs matching:NO];
+        for (NSDictionary *user in lostFollowers)
             [newEvents addObject:[self eventOfType:@"lost_follower" user:user old:nil new:nil date:now]];
         for (NSDictionary *user in [SCIAnalyzerStore users:following inSet:oldFollowingPKs matching:NO])
             [newEvents addObject:[self eventOfType:@"new_following" user:user old:nil new:nil date:now]];
@@ -234,6 +251,17 @@ static NSUInteger const kMaxScans = 200;
     [self.mutableScans insertObject:@{ @"date": now, @"followers": @(followers.count), @"following": @(following.count) } atIndex:0];
     if (self.mutableScans.count > kMaxScans) [self.mutableScans removeLastObject];
     [self writeJSON:self.mutableScans name:@"scans.json"];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:SCIAnalyzerStoreDidChangeNotification object:self];
+    });
+
+    return lostFollowers;
+}
+
+- (void)recordHiddenProfile:(NSDictionary *)user {
+    [self.mutableEvents insertObject:[self eventOfType:@"profile_hidden" user:user old:nil new:nil date:@([[NSDate date] timeIntervalSince1970])] atIndex:0];
+    [self saveEvents];
 }
 
 // MARK: - Actions
@@ -323,6 +351,7 @@ static NSUInteger const kMaxScans = 200;
     if ([type isEqualToString:@"you_removed"])    return [NSString stringWithFormat:@"You removed %@ as a follower", username];
     if ([type isEqualToString:@"username"])       return [NSString stringWithFormat:@"@%@ changed their username to @%@", event[@"old"], event[@"new"]];
     if ([type isEqualToString:@"full_name"])      return [NSString stringWithFormat:@"%@ changed their name from \"%@\" to \"%@\"", username, event[@"old"], event[@"new"]];
+    if ([type isEqualToString:@"profile_hidden"]) return [NSString stringWithFormat:@"%@'s profile is no longer visible to you. They may have blocked you or deactivated", username];
     if ([type isEqualToString:@"profile_pic"])    return [NSString stringWithFormat:@"%@ changed their profile picture", username];
 
     return username;

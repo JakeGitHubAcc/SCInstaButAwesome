@@ -3,6 +3,7 @@
 #import "SCIAnalyzerStore.h"
 #import "SCIAnalyzerListViewController.h"
 #import "SCIAnalyzerHistoryViewController.h"
+#import "SCIAnalyzerMonitor.h"
 #import "../../Utils.h"
 
 typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
@@ -10,6 +11,7 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
     SCIAnalyzerSectionResults,
     SCIAnalyzerSectionChanges,
     SCIAnalyzerSectionHistory,
+    SCIAnalyzerSectionAlerts,
     SCIAnalyzerSectionData,
     SCIAnalyzerSectionCount,
 };
@@ -33,6 +35,13 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
     [super viewDidLoad];
 
     self.title = @"Profile analyzer";
+
+    // Background follower checks save into the same store
+    [[NSNotificationCenter defaultCenter] addObserver:self.tableView selector:@selector(reloadData) name:SCIAnalyzerStoreDidChangeNotification object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self.tableView name:SCIAnalyzerStoreDidChangeNotification object:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -53,7 +62,7 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
         self.store = nil;
     }
     else if (![self.store.userPK isEqualToString:pk]) {
-        self.store = [[SCIAnalyzerStore alloc] initWithUserPK:pk];
+        self.store = [SCIAnalyzerStore storeForUserPK:pk];
     }
 }
 
@@ -94,6 +103,7 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
         case SCIAnalyzerSectionResults:
         case SCIAnalyzerSectionChanges: return [self listsForSection:section].count;
         case SCIAnalyzerSectionHistory: return 2;
+        case SCIAnalyzerSectionAlerts:  return [SCIUtils getBoolPref:@"analyzer_unfollow_alerts"] ? 3 : 1;
         case SCIAnalyzerSectionData:    return 2;
     }
     return 0;
@@ -104,6 +114,7 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
         case SCIAnalyzerSectionResults: return @"Results";
         case SCIAnalyzerSectionChanges: return @"Since previous scan";
         case SCIAnalyzerSectionHistory: return @"History";
+        case SCIAnalyzerSectionAlerts:  return @"Alerts";
         case SCIAnalyzerSectionData:    return @"Data";
     }
     return nil;
@@ -112,6 +123,9 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == SCIAnalyzerSectionAccount) {
         return @"Scans load your full follower and following lists from Instagram, a page at a time. Large accounts take a few minutes. Scanning often, or acting on many accounts at once, can get your account temporarily limited.";
+    }
+    if (section == SCIAnalyzerSectionAlerts) {
+        return @"Followers are re-checked when you open Instagram, at most once per interval, starting from your last scan. Run one manual scan first. Instagram doesn't say who blocked you, so a lost follower whose profile no longer loads is reported as a possible block; deactivated accounts look the same. Accounts with more than 20,000 followers are not checked automatically.";
     }
     if (section == SCIAnalyzerSectionData) {
         return @"Scans are stored only on this device, separately for each account.";
@@ -193,6 +207,33 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
                 content.image = [UIImage systemImageNamed:@"chart.line.uptrend.xyaxis"];
             }
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            break;
+        }
+
+        case SCIAnalyzerSectionAlerts: {
+            content = [UIListContentConfiguration subtitleCellConfiguration];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+            if (indexPath.row == 2) {
+                content.text = @"Check every";
+                content.image = [UIImage systemImageNamed:@"clock"];
+                cell.accessoryView = [self intervalButton];
+                break;
+            }
+
+            NSString *key = indexPath.row == 0 ? @"analyzer_unfollow_alerts" : @"analyzer_block_check";
+            content.text = indexPath.row == 0 ? @"Unfollow alerts" : @"Check for blocks";
+            content.secondaryText = indexPath.row == 0
+                ? @"Get a notification when someone stops following you"
+                : @"Also check whether people who unfollowed you can still be found";
+            content.secondaryTextProperties.color = [UIColor secondaryLabelColor];
+            content.image = [UIImage systemImageNamed:indexPath.row == 0 ? @"bell.badge" : @"hand.raised"];
+
+            UISwitch *toggle = [UISwitch new];
+            toggle.on = [SCIUtils getBoolPref:key];
+            toggle.accessibilityIdentifier = key;
+            [toggle addTarget:self action:@selector(alertSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = toggle;
             break;
         }
 
@@ -280,6 +321,12 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
     SCIAnalyzerStore *store = self.store;
     SCIAnalyzerAPI *api = [SCIAnalyzerAPI sharedInstance];
 
+    if (store.scanInProgress) {
+        [SCIUtils showErrorHUDWithDescription:@"A background check is running. Try again in a minute."];
+        return;
+    }
+    store.scanInProgress = YES;
+
     self.scanning = YES;
     self.cancelRequested = NO;
     self.scanStatus = @"Loading followers…";
@@ -290,6 +337,7 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
     };
 
     void (^fail)(NSError *) = ^(NSError *error) {
+        store.scanInProgress = NO;
         weakSelf.scanning = NO;
         [weakSelf.tableView reloadData];
 
@@ -313,11 +361,47 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerSection) {
             if (error) { fail(error); return; }
 
             [store saveScanWithFollowers:followers following:following];
+            store.scanInProgress = NO;
 
             weakSelf.scanning = NO;
             [weakSelf.tableView reloadData];
         }];
     }];
+}
+
+- (UIButton *)intervalButton {
+    double current = [SCIUtils getDoublePref:@"analyzer_check_hours"];
+    if (current < 1) current = 6;
+
+    NSMutableArray *actions = [NSMutableArray array];
+    for (NSNumber *hours in @[@1, @3, @6, @12, @24]) {
+        NSString *title = hours.integerValue == 1 ? @"1 hour" : [NSString stringWithFormat:@"%@ hours", hours];
+
+        __weak typeof(self) weakSelf = self;
+        UIAction *action = [UIAction actionWithTitle:title image:nil identifier:nil handler:^(UIAction *a) {
+            [[NSUserDefaults standardUserDefaults] setDouble:hours.doubleValue forKey:@"analyzer_check_hours"];
+            [weakSelf.tableView reloadData];
+        }];
+        if (hours.doubleValue == current) action.state = UIMenuElementStateOn;
+        [actions addObject:action];
+    }
+
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [button setTitle:current == 1 ? @"1 hour" : [NSString stringWithFormat:@"%.0f hours", current] forState:UIControlStateNormal];
+    button.menu = [UIMenu menuWithChildren:actions];
+    button.showsMenuAsPrimaryAction = YES;
+    [button sizeToFit];
+    return button;
+}
+
+- (void)alertSwitchChanged:(UISwitch *)toggle {
+    NSString *key = toggle.accessibilityIdentifier;
+    [[NSUserDefaults standardUserDefaults] setBool:toggle.on forKey:key];
+
+    if ([key isEqualToString:@"analyzer_unfollow_alerts"]) {
+        if (toggle.on) [SCIAnalyzerMonitor requestNotificationPermission];
+        [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:SCIAnalyzerSectionAlerts] withRowAnimation:UITableViewRowAnimationAutomatic];
+    }
 }
 
 - (void)confirmClearData {

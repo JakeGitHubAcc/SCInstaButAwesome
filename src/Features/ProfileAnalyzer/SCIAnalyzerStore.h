@@ -2,6 +2,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// Posted on the main queue whenever a store saves a scan
+extern NSNotificationName const SCIAnalyzerStoreDidChangeNotification;
+
 typedef NS_ENUM(NSInteger, SCIAnalyzerList) {
     SCIAnalyzerListMutuals,
     SCIAnalyzerListNotFollowingBack,   // You follow them, they don't follow you
@@ -27,7 +30,11 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerList) {
 @property (nonatomic, readonly) NSArray<NSDictionary *> *events; // Newest first
 @property (nonatomic, readonly) NSArray<NSDictionary *> *scans;  // Newest first
 
-- (instancetype)initWithUserPK:(NSString *)pk;
+// One shared store per account, so the analyzer screen and background checks see the same data
++ (instancetype)storeForUserPK:(NSString *)pk;
+
+// Set while a scan or background check is running for this account
+@property (nonatomic) BOOL scanInProgress;
 
 - (NSArray<NSDictionary *> *)usersForList:(SCIAnalyzerList)list;
 + (NSString *)titleForList:(SCIAnalyzerList)list;
@@ -35,8 +42,12 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerList) {
 - (BOOL)isFollower:(NSString *)pk;
 - (BOOL)isFollowing:(NSString *)pk;
 
-// Saves a fresh scan, recording what changed since the previous one
-- (void)saveScanWithFollowers:(NSArray<NSDictionary *> *)followers following:(NSArray<NSDictionary *> *)following;
+// Saves a fresh scan, recording what changed since the previous one, and returns the followers that were lost.
+// Pass nil for `following` to keep the saved following list (used by background follower checks).
+- (NSArray<NSDictionary *> *)saveScanWithFollowers:(NSArray<NSDictionary *> *)followers following:(nullable NSArray<NSDictionary *> *)following;
+
+// Records that a lost follower's profile can no longer be loaded (blocked you or deactivated)
+- (void)recordHiddenProfile:(NSDictionary *)user;
 
 // Keeps the saved scan in sync after acting on a user from the analyzer
 - (void)recordFollow:(NSDictionary *)user;

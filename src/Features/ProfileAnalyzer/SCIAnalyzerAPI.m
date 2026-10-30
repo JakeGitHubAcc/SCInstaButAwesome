@@ -282,6 +282,16 @@ static NSString * const kFallbackAppID = @"124024574287414"; // Instagram iOS ap
     }];
 }
 
+- (void)checkProfileVisible:(NSString *)pk completion:(void (^)(BOOL))completion {
+    [self prepareFallbackUserAgent];
+
+    NSString *path = [NSString stringWithFormat:@"users/%@/info/", pk];
+    [self sendRequest:[self requestWithPath:path method:@"GET" body:nil] completion:^(NSDictionary *json, NSError *error) {
+        BOOL notFound = error.code == 404 || [error.localizedDescription.lowercaseString containsString:@"not found"];
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(!notFound); });
+    }];
+}
+
 - (void)performAction:(SCIAnalyzerFriendshipAction)action userPK:(NSString *)pk completion:(void (^)(NSError *))completion {
     [self prepareFallbackUserAgent];
 

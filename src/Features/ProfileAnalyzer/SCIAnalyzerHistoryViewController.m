@@ -34,7 +34,8 @@
 + (NSArray<NSArray *> *)filters {
     return @[
         @[@"Everything", [NSNull null]],
-        @[@"Followers gained or lost", @[@"new_follower", @"lost_follower"]],
+        @[@"Followers gained or lost", @[@"new_follower", @"lost_follower", @"profile_hidden"]],
+        @[@"Possible blocks", @[@"profile_hidden"]],
         @[@"Following changes", @[@"new_following", @"lost_following", @"you_followed", @"you_unfollowed", @"you_removed"]],
         @[@"Username changes", @[@"username"]],
         @[@"Name changes", @[@"full_name"]],
@@ -109,13 +110,14 @@
         @"username":       @"at",
         @"full_name":      @"textformat",
         @"profile_pic":    @"photo.circle",
+        @"profile_hidden": @"eye.slash",
     };
     return symbols[type] ?: @"circle";
 }
 
 + (UIColor *)colorForEventType:(NSString *)type {
     if ([@[@"new_follower", @"new_following", @"you_followed"] containsObject:type]) return [UIColor systemGreenColor];
-    if ([@[@"lost_follower", @"lost_following", @"you_unfollowed", @"you_removed"] containsObject:type]) return [UIColor systemRedColor];
+    if ([@[@"lost_follower", @"lost_following", @"you_unfollowed", @"you_removed", @"profile_hidden"] containsObject:type]) return [UIColor systemRedColor];
     return [UIColor systemBlueColor];
 }
 

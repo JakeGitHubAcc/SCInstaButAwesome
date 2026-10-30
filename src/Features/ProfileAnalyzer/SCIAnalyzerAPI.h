@@ -31,6 +31,10 @@ typedef NS_ENUM(NSInteger, SCIAnalyzerFriendshipAction) {
                 isCancelled:(nullable BOOL (^)(void))isCancelled
                  completion:(void (^)(NSArray<NSDictionary *> * _Nullable users, NSError * _Nullable error))completion;
 
+// Whether the profile can still be loaded. Blocked and deactivated accounts both come back as not found;
+// `visible` is YES when the result is unclear, so a network error is never reported as a block.
+- (void)checkProfileVisible:(NSString *)pk completion:(void (^)(BOOL visible))completion;
+
 - (void)performAction:(SCIAnalyzerFriendshipAction)action
                userPK:(NSString *)pk
            completion:(void (^)(NSError * _Nullable error))completion;

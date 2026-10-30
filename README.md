@@ -105,6 +105,7 @@ A feature-rich tweak for Instagram on iOS!\
 - New and lost followers since your previous scan
 - Change history for usernames, names and profile pictures
 - Follow, unfollow and remove followers, one at a time or in bulk
+- Unfollow alerts: re-checks your followers when Instagram opens and notifies you, flagging possible blocks
 - Export to CSV
 ### Optimization
 - Automatically clears unneeded cache folders, reducing the size of your Instagram installation
