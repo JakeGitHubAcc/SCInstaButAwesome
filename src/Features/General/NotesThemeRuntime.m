@@ -191,6 +191,8 @@ static NSString * const kSavedOfficialThemesKey = @"notes_saved_official_themes"
     NSMutableDictionary *saved = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:kSavedOfficialThemesKey] mutableCopy] ?: [NSMutableDictionary dictionary];
     // Several designs can share an activation type, so keep them apart by customization id too
     NSString *key = [NSString stringWithFormat:@"%@|%@", activationType, theme[@"customizationId"] ?: @""];
+    // Keep what was learned from posting it (the theme model doesn't have it)
+    if (saved[key][@"expressiveEmoji"]) theme[@"expressiveEmoji"] = saved[key][@"expressiveEmoji"];
     if ([saved[key] isEqualToDictionary:theme]) return;
 
     saved[key] = theme;
@@ -204,6 +206,29 @@ static NSString * const kSavedOfficialThemesKey = @"notes_saved_official_themes"
 
 // MARK: - Sharing
 
+// Official designs can add an "expressive emoji" (like the stars in the corners), which isn't part
+// of the theme model. Learn it when a saved design is posted through Instagram's own palette.
++ (void)learnFromOfficialNoteRequest:(id)request {
+    @try {
+        id input = [[request valueForKey:@"noteCreateParams"] valueForKey:@"noteCustomization"];
+        NSString *activationType = [input valueForKey:@"activationType"];
+        if (![self isOfficialActivationType:activationType]) return;
+
+        NSString *key = [NSString stringWithFormat:@"%@|%@", activationType, [input valueForKey:@"customizationId"] ?: @""];
+        NSMutableDictionary *saved = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:kSavedOfficialThemesKey] mutableCopy];
+        NSMutableDictionary *theme = [saved[key] mutableCopy];
+        if (!theme) return;
+
+        id expressiveEmoji = [input valueForKey:@"expressiveEmoji"];
+        if ([expressiveEmoji isKindOfClass:[NSString class]]) theme[@"expressiveEmoji"] = expressiveEmoji;
+        else [theme removeObjectForKey:@"expressiveEmoji"];
+
+        saved[key] = theme;
+        [[NSUserDefaults standardUserDefaults] setObject:saved forKey:kSavedOfficialThemesKey];
+    }
+    @catch (NSException *exception) {}
+}
+
 static NSDictionary *sciAppliedTheme;
 
 + (void)setAppliedTheme:(NSDictionary *)theme {
@@ -216,7 +241,10 @@ static NSDictionary *sciAppliedTheme;
 // (the note then posts with the default grey), so those are cleared here at posting time.
 + (void)applyThemeToNoteRequest:(id)request {
     NSDictionary *theme = sciAppliedTheme;
-    if (!theme) return;
+    if (!theme) {
+        [self learnFromOfficialNoteRequest:request];
+        return;
+    }
 
     @try {
         id params = [request valueForKey:@"noteCreateParams"];
@@ -239,11 +267,13 @@ static NSDictionary *sciAppliedTheme;
         [input setValue:hex(theme[@"background"]) forKey:@"backgroundColorHex"];
         [input setValue:hex(theme[@"text"]) forKey:@"textColorHex"];
         [input setValue:hex(theme[@"secondaryText"] ?: theme[@"text"]) forKey:@"secondaryTextColorHex"];
-        if (theme[@"emoji"]) [input setValue:theme[@"emoji"] forKey:@"customEmoji"];
+        // Everything is set, including empty values, so nothing from an earlier design is left behind
+        [input setValue:theme[@"emoji"] forKey:@"customEmoji"];
 
         BOOL official = [self isOfficialActivationType:theme[@"activationType"]];
         [input setValue:official ? theme[@"activationType"] : SCINotesUserCustomization forKey:@"activationType"];
         [input setValue:official ? theme[@"customizationId"] : nil forKey:@"customizationId"];
+        [input setValue:official ? theme[@"expressiveEmoji"] : nil forKey:@"expressiveEmoji"];
 
         [params setValue:input forKey:@"noteCustomization"];
     }

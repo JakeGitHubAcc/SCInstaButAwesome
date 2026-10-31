@@ -169,6 +169,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 %property (nonatomic, copy) UIColor *textColor;
 %property (nonatomic, copy) NSString *emojiText;
 %property (nonatomic, copy) NSDictionary *sciTheme;
+%property (nonatomic, copy) NSString *sciUserEmoji; // Set with the Emoji button; official designs' emoji don't carry over
 
 - (void)didMoveToWindow {
     %orig;
@@ -263,6 +264,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
                                                       style:UIAlertActionStyleDefault
                                                     handler:^(UIAlertAction *action) {
                 SELF.emojiText = alert.textFields[0].text;
+                SELF.sciUserEmoji = SELF.emojiText.length ? SELF.emojiText : nil;
                 [SELF applySCICustomTheme:@"Emoji"];
             }]];
             
@@ -363,6 +365,17 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 
 // Applies a theme picked through SCInsta (see SCINotesThemeRuntime for the format)
 %new - (void)applySCITheme:(NSDictionary *)theme {
+    // Instagram's editor keeps state for its own official designs (like the Halloween 2026 bubble),
+    // which would linger under SCInsta's theme, so reset it with Instagram's own Clear first
+    if (!SELF.sciTheme) {
+        NSDictionary *current = [SCINotesThemeRuntime themeFromModel:[SELF sciCurrentThemeModel]];
+        UIViewController *editor = [SCIUtils nearestViewControllerForView:SELF];
+
+        if ([SCINotesThemeRuntime isOfficialActivationType:current[@"activationType"]] && [editor respondsToSelector:@selector(didTapClearButton)]) {
+            [editor performSelector:@selector(didTapClearButton)];
+        }
+    }
+
     SELF.sciTheme = theme;
     SELF.backgroundColor = [SCINotesThemeRuntime colorFromHex:theme[@"background"]];
     SELF.textColor = [SCINotesThemeRuntime colorFromHex:theme[@"text"]];
@@ -453,7 +466,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 
     if ([target isEqualToString:@"Emoji"]) {
         // An emoji change keeps the current design
-        theme[@"emoji"] = SELF.emojiText;
+        theme[@"emoji"] = SELF.sciUserEmoji;
     }
     else {
         // A new color turns any official design into a custom theme, which has no gradient or design id
@@ -465,8 +478,11 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
             theme[@"secondaryText"] = theme[@"text"];
         }
 
+        // An official design's emoji belongs to the design
+        if ([SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) theme[@"emoji"] = SELF.sciUserEmoji;
+
         theme[@"activationType"] = SCINotesUserCustomization;
-        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"name"]];
+        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"expressiveEmoji", @"name"]];
     }
 
     [SELF applySCITheme:theme];
@@ -588,8 +604,9 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
         theme[@"background"] = theme[@"text"] ?: @"FFFFFF";
         theme[@"text"] = background;
         theme[@"secondaryText"] = background;
+        if ([SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) theme[@"emoji"] = SELF.sciUserEmoji;
         theme[@"activationType"] = SCINotesUserCustomization;
-        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"name"]];
+        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"expressiveEmoji", @"name"]];
         [SELF applySCITheme:theme];
         return;
     }
@@ -597,10 +614,9 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     NSMutableDictionary *theme = [icon mutableCopy];
     [theme removeObjectForKey:@"name"];
 
-    // Color presets keep the current emoji; official designs bring their own
-    if (![SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) {
-        id emoji = [SELF sciBaseTheme][@"emoji"];
-        if (emoji) theme[@"emoji"] = emoji;
+    // Color presets keep an emoji you set yourself; official designs bring their own
+    if (![SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]] && SELF.sciUserEmoji) {
+        theme[@"emoji"] = SELF.sciUserEmoji;
     }
 
     [SELF applySCITheme:theme];
