@@ -1,5 +1,6 @@
 #import "../../Utils.h"
 #import "NoteRequestLog.h"
+#import "NotesThemeRuntime.h"
 
 // GIF notes with a song (Instagram 453+, experimental)
 //
@@ -90,19 +91,21 @@ static void SCIAddSavedSongToRequest(id request) {
 }
 %end
 
-// A new note starts without a saved song
+// A new note starts without a saved song or SCInsta theme
 // Demangled name: IGDirectNotesCreationComposerUI.IGDirectNotesComposerViewController
 %hook _TtC31IGDirectNotesCreationComposerUI35IGDirectNotesComposerViewController
 - (void)viewDidLoad {
     sciSavedSong = nil;
+    [SCINotesThemeRuntime setAppliedTheme:nil];
     %orig;
 }
 %end
 
-// Every note request passes through here (Instagram 453+)
+// Every note request passes through here (Instagram 453+): add the saved song and fix up the theme
 %hook IGDirectCreateNoteMutationQueryBuilder
 + (id)builderWithRequest:(id)request {
     SCIAddSavedSongToRequest(request);
+    [SCINotesThemeRuntime applyThemeToNoteRequest:request];
     [SCINoteRequestLog recordObject:request title:@"Note request (IGDirectCreateNoteMutationQueryBuilder)"];
 
     return %orig;

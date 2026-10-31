@@ -433,20 +433,17 @@
 @property (nonatomic, copy) UIColor *backgroundColor; // new
 @property (nonatomic, copy) UIColor *textColor; // new
 @property (nonatomic, copy) NSString *emojiText; // new
-
-@property (nonatomic, copy) UIColor *gradientStartColor; // new
+@property (nonatomic, copy) NSDictionary *sciTheme; // new
 
 - (void)presentColorPicker:(NSString *)target; // new
 - (void)applySCICustomTheme:(NSString *)target; // new
-@property (nonatomic, copy) UIColor *gradientEndColor; // new
-@property (nonatomic, copy) NSString *activationType; // new
+- (void)applySCITheme:(NSDictionary *)theme; // new
+- (NSDictionary *)sciBaseTheme; // new
 - (NSInteger)sciOriginalSectionCount; // new
 - (NSArray *)sciIconPages; // new
+- (NSArray *)sciBuildIconPages; // new
 - (NSDictionary *)sciIconAtIndexPath:(NSIndexPath *)indexPath; // new
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout sizeForItemAtIndexPath:(NSIndexPath *)indexPath;
-- (void)applySCIPreset:(NSDictionary *)preset; // new
-- (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd; // new
-- (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd activationType:(NSString *)activationType; // new
 - (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel; // new
 - (void)sciCommitThemeModel:(IGNotesCustomThemeCreationModel *)model; // new
 @end

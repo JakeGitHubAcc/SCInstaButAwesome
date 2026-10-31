@@ -59,15 +59,16 @@ static char targetStaticRef[] = "target";
 typedef _TtC20IGDirectNotesUISwift41IGDirectNotesBubbleEditorColorPaletteView SCINotesPaletteView;
 #define SELF ((SCINotesPaletteView *)self)
 
-static NSString * const kSCIUserCustomization = @"user_led_customization";
 static NSString * const kSCIIconCellID = @"SCINoteThemeIconCell";
 static NSUInteger const kSCIIconsPerPage = 6;
 static char kSCIOriginalSectionsKey;
+static char kSCIIconPagesKey;
 
 // The theme last picked through SCInsta. The bubble editor keeps its own copy of the theme and sends
 // that on Apply, which would drop SCInsta's colors, so the receiving hooks below swap this one in.
 // Cleared when one of Instagram's themes is picked, on Clear, and when the editor opens.
 static IGNotesCustomThemeCreationModel *sciPendingThemeModel;
+static NSDictionary *sciPendingTheme; // The same theme as a dictionary, for fixing up the note request
 
 static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     for (UIView *subview in view.subviews) {
@@ -78,7 +79,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     return nil;
 }
 
-// Rounded icon matching Instagram's palette cells: a gradient (or solid) swatch with an emoji on top
+// Square icon matching Instagram's palette: a rounded swatch with a white outline
 @interface SCINoteThemeIconCell : UICollectionViewCell
 @property (nonatomic, strong) CAGradientLayer *swatch;
 @property (nonatomic, strong) UILabel *label;
@@ -92,8 +93,8 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 
     if (self) {
         self.swatch = [CAGradientLayer layer];
-        self.swatch.startPoint = CGPointMake(0, 0);
-        self.swatch.endPoint = CGPointMake(1, 1);
+        self.swatch.startPoint = CGPointMake(0.5, 0);
+        self.swatch.endPoint = CGPointMake(0.5, 1);
         self.swatch.masksToBounds = YES;
         self.swatch.borderColor = [UIColor whiteColor].CGColor;
         [self.contentView.layer addSublayer:self.swatch];
@@ -113,40 +114,39 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 - (void)layoutSubviews {
     [super layoutSubviews];
 
+    // Square, centered, with room between neighbouring icons
     CGRect bounds = self.contentView.bounds;
-    self.swatch.frame = bounds;
-    self.swatch.cornerRadius = MIN(bounds.size.width, bounds.size.height) * 0.25;
-    self.label.frame = CGRectInset(bounds, bounds.size.width * 0.15, bounds.size.height * 0.15);
-    self.label.font = [UIFont systemFontOfSize:bounds.size.height * 0.45 weight:UIFontWeightSemibold];
+    CGFloat side = MIN(bounds.size.width, bounds.size.height) * 0.82;
+    CGRect square = CGRectMake(CGRectGetMidX(bounds) - side / 2, CGRectGetMidY(bounds) - side / 2, side, side);
+
+    self.swatch.frame = square;
+    self.swatch.cornerRadius = side * 0.24;
+    self.label.frame = CGRectInset(square, side * 0.14, side * 0.14);
+    self.label.font = [UIFont systemFontOfSize:side * 0.42 weight:UIFontWeightBold];
 }
 
 - (void)configureWithIcon:(NSDictionary *)icon {
-    NSString *kind = icon[@"kind"];
-    NSArray *colors;
-
-    if ([kind isEqualToString:@"custom"]) {
-        colors = @[(id)[UIColor systemPinkColor].CGColor, (id)[UIColor systemOrangeColor].CGColor, (id)[UIColor systemPurpleColor].CGColor];
-        self.label.text = @"+";
-        self.label.textColor = [UIColor whiteColor];
-    }
-    else if ([kind isEqualToString:@"swap"]) {
-        colors = @[(id)[UIColor blackColor].CGColor, (id)[UIColor whiteColor].CGColor];
+    if ([icon[@"kind"] isEqualToString:@"swap"]) {
+        self.swatch.colors = @[(id)[UIColor whiteColor].CGColor, (id)[UIColor blackColor].CGColor];
+        self.swatch.locations = @[@0.5, @0.5];
         self.label.text = @"⇄";
         self.label.textColor = [UIColor systemGrayColor];
     }
-    else if (icon[@"activationType"]) {
-        // Instagram's own seasonal designs
-        colors = @[(id)[UIColor colorWithWhite:0.18 alpha:1].CGColor, (id)[UIColor colorWithWhite:0.06 alpha:1].CGColor];
-        self.label.text = icon[@"emoji"];
-    }
     else {
-        UIColor *start = icon[@"background"];
-        UIColor *end = icon[@"gradientEnd"] ?: start;
-        colors = @[(id)start.CGColor, (id)end.CGColor];
-        self.label.text = icon[@"emoji"];
+        UIColor *background = [SCINotesThemeRuntime colorFromHex:icon[@"background"]] ?: [UIColor darkGrayColor];
+        NSMutableArray *colors = [NSMutableArray array];
+        for (NSString *hex in icon[@"gradient"]) [colors addObject:(id)[SCINotesThemeRuntime colorFromHex:hex].CGColor];
+        if (colors.count < 2) colors = [@[(id)background.CGColor, (id)background.CGColor] mutableCopy];
+
+        self.swatch.colors = colors;
+        self.swatch.locations = nil;
+
+        // Official designs show their emoji; color presets show their text color
+        BOOL official = [SCINotesThemeRuntime isOfficialActivationType:icon[@"activationType"]];
+        self.label.text = official ? (icon[@"emoji"] ?: @"") : @"Aa";
+        self.label.textColor = [SCINotesThemeRuntime colorFromHex:icon[@"text"]] ?: [UIColor whiteColor];
     }
 
-    self.swatch.colors = colors;
     self.accessibilityLabel = icon[@"name"];
     [self updateSelectionStyle];
 }
@@ -157,8 +157,8 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 }
 
 - (void)updateSelectionStyle {
-    self.swatch.borderWidth = self.selected ? 2.5 : 0;
-    self.transform = self.selected ? CGAffineTransformMakeScale(1.08, 1.08) : CGAffineTransformIdentity;
+    self.swatch.borderWidth = self.selected ? 3.5 : 2.0;
+    self.transform = self.selected ? CGAffineTransformMakeScale(1.06, 1.06) : CGAffineTransformIdentity;
 }
 
 @end
@@ -168,9 +168,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 %property (nonatomic, copy) UIColor *backgroundColor;
 %property (nonatomic, copy) UIColor *textColor;
 %property (nonatomic, copy) NSString *emojiText;
-%property (nonatomic, copy) UIColor *gradientStartColor;
-%property (nonatomic, copy) UIColor *gradientEndColor;
-%property (nonatomic, copy) NSString *activationType;
+%property (nonatomic, copy) NSDictionary *sciTheme;
 
 - (void)didMoveToWindow {
     %orig;
@@ -320,15 +318,12 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     colorPickerController.supportsAlpha = NO;
 
     // Show last picked color for type
-    if ([target isEqualToString:@"Background"] || [target isEqualToString:@"GradientStart"]) {
+    if ([target isEqualToString:@"Background"]) {
         if (SELF.backgroundColor) colorPickerController.selectedColor = SELF.backgroundColor;
     }
     else if ([target isEqualToString:@"Text"]) {
-        colorPickerController.selectedColor = SELF.textColor;
+        if (SELF.textColor) colorPickerController.selectedColor = SELF.textColor;
     }
-
-    if ([target isEqualToString:@"GradientStart"]) colorPickerController.title = @"Gradient start color";
-    else if ([target isEqualToString:@"GradientEnd"]) colorPickerController.title = @"Gradient end color";
     
     UIViewController *presentingVC = [SCIUtils nearestViewControllerForView:SELF];
     
@@ -355,13 +350,6 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     NSString *target = objc_getAssociatedObject(bubbleEditorVC, &targetStaticRef);
     if (!target) return;
     
-    // Gradient colors are applied once both are picked
-    if ([target isEqualToString:@"GradientStart"]) {
-        SELF.gradientStartColor = color;
-        return;
-    }
-    if ([target isEqualToString:@"GradientEnd"]) return;
-
     // Update saved color target
     if ([target isEqualToString:@"Background"]) {
         SELF.backgroundColor = color;
@@ -373,75 +361,40 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     [SELF applySCICustomTheme:target];
 };
 
-%new - (void)colorPickerViewControllerDidFinish:(UIColorPickerViewController *)viewController {
-    UIViewController *presentingVC = [SCIUtils nearestViewControllerForView:SELF];
-    NSString *target = objc_getAssociatedObject(presentingVC, &targetStaticRef);
+// Applies a theme picked through SCInsta (see SCINotesThemeRuntime for the format)
+%new - (void)applySCITheme:(NSDictionary *)theme {
+    SELF.sciTheme = theme;
+    SELF.backgroundColor = [SCINotesThemeRuntime colorFromHex:theme[@"background"]];
+    SELF.textColor = [SCINotesThemeRuntime colorFromHex:theme[@"text"]];
+    SELF.emojiText = theme[@"emoji"];
 
-    if ([target isEqualToString:@"GradientStart"]) {
-        if (!SELF.gradientStartColor) SELF.gradientStartColor = viewController.selectedColor;
-
-        // Wait for this picker to finish dismissing before showing the next one
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [SELF presentColorPicker:@"GradientEnd"];
-        });
-    }
-    else if ([target isEqualToString:@"GradientEnd"]) {
-        objc_setAssociatedObject(presentingVC, &targetStaticRef, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        UIColor *start = SELF.gradientStartColor ?: SELF.backgroundColor ?: [UIColor blackColor];
-        [SELF applySCIThemeWithBackground:start text:SELF.textColor emoji:SELF.emojiText gradientEnd:viewController.selectedColor];
-    }
-}
-
-%new - (void)applySCIPreset:(NSDictionary *)preset {
-    [SELF applySCIThemeWithBackground:preset[@"background"] text:preset[@"text"] emoji:preset[@"emoji"] gradientEnd:preset[@"gradientEnd"] activationType:kSCIUserCustomization];
-}
-
-%new - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd {
-    [SELF applySCIThemeWithBackground:background text:text emoji:emoji gradientEnd:gradientEnd activationType:kSCIUserCustomization];
-}
-
-%new - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd activationType:(NSString *)activationType {
-    if (background) SELF.backgroundColor = background;
-    if (text) SELF.textColor = text;
-    if (emoji) SELF.emojiText = emoji;
-    SELF.gradientEndColor = gradientEnd;
-    SELF.activationType = activationType;
-
-    IGNotesCustomThemeCreationModel *current = [SELF sciCurrentThemeModel];
-    if (!current) return;
-
-    // Gradients and activation types can only be set through Instagram's initializer
-    NSArray *gradient = gradientEnd ? @[SELF.backgroundColor ?: [UIColor blackColor], gradientEnd] : nil;
-    IGNotesCustomThemeCreationModel *model = [SCINotesThemeRuntime themeModelWithBackground:SELF.backgroundColor ?: [UIColor blackColor]
-                                                                             gradientColors:gradient
-                                                                                  textColor:SELF.textColor ?: [UIColor whiteColor]
-                                                                                      emoji:SELF.emojiText
-                                                                             activationType:activationType
-                                                                                    basedOn:current];
+    // Gradients, activation types and customization ids can only be set through Instagram's initializer
+    IGNotesCustomThemeCreationModel *model = [SCINotesThemeRuntime themeModelForTheme:theme];
 
     if (!model) {
-        // Older or newer Instagram without that initializer: solid colors only
-        model = current;
-        [model setValue:SELF.backgroundColor forKey:@"backgroundColor"];
-        if (SELF.textColor) {
+        // Instagram without that initializer: set the solid colors on the current model
+        model = [SELF sciCurrentThemeModel];
+        if (!model) return;
+
+        @try {
+            [model setValue:SELF.backgroundColor forKey:@"backgroundColor"];
             [model setValue:SELF.textColor forKey:@"textColor"];
             [model setValue:SELF.textColor forKey:@"secondaryTextColor"];
+            [model setValue:SELF.emojiText forKey:@"customEmoji"];
         }
-        [model setValue:SELF.emojiText forKey:@"customEmoji"];
-
-        if ((gradientEnd || activationType) && ![[NSUserDefaults standardUserDefaults] boolForKey:@"notes_gradient_unsupported_shown"]) {
-            [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"notes_gradient_unsupported_shown"];
-
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Not available in this Instagram version"
-                                                                           message:@"Gradients and Instagram's seasonal designs need Instagram's note theme initializer, which this version doesn't have, so only solid colors are used.\n\nTo help add support, go to SCInsta settings > Debug > Copy note theme fields and share the result."
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [[SCIUtils nearestViewControllerForView:SELF] presentViewController:alert animated:YES completion:nil];
+        @catch (NSException *exception) {
+            NSLog(@"[SCInsta] Notes: couldn't update theme model: %@", exception.reason);
         }
     }
 
+    sciPendingTheme = theme;
     [SELF sciCommitThemeModel:model];
+}
+
+// The theme being edited: the last one picked through SCInsta, else the editor's current one
+%new - (NSDictionary *)sciBaseTheme {
+    if (SELF.sciTheme) return SELF.sciTheme;
+    return [SCINotesThemeRuntime themeFromModel:[SELF sciCurrentThemeModel]] ?: @{};
 }
 
 %new - (IGNotesCustomThemeCreationModel *)sciCurrentThemeModel {
@@ -496,14 +449,27 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 }
 
 %new - (void)applySCICustomTheme:(NSString *)target {
-    // A new background color replaces any gradient or seasonal design; text and emoji changes keep them
-    BOOL keepDesign = ![target isEqualToString:@"Background"];
+    NSMutableDictionary *theme = [[SELF sciBaseTheme] mutableCopy];
 
-    [SELF applySCIThemeWithBackground:nil
-                                 text:nil
-                                emoji:nil
-                          gradientEnd:keepDesign ? SELF.gradientEndColor : nil
-                       activationType:keepDesign && SELF.activationType ? SELF.activationType : kSCIUserCustomization];
+    if ([target isEqualToString:@"Emoji"]) {
+        // An emoji change keeps the current design
+        theme[@"emoji"] = SELF.emojiText;
+    }
+    else {
+        // A new color turns any official design into a custom theme, which has no gradient or design id
+        if ([target isEqualToString:@"Background"]) {
+            theme[@"background"] = [SCINotesThemeRuntime hexForColor:SELF.backgroundColor];
+        }
+        else {
+            theme[@"text"] = [SCINotesThemeRuntime hexForColor:SELF.textColor];
+            theme[@"secondaryText"] = theme[@"text"];
+        }
+
+        theme[@"activationType"] = SCINotesUserCustomization;
+        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"name"]];
+    }
+
+    [SELF applySCITheme:theme];
 }
 
 // MARK: - SCInsta pages in the color palette
@@ -512,26 +478,30 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     return [objc_getAssociatedObject(SELF, &kSCIOriginalSectionsKey) integerValue];
 }
 
-%new - (NSArray<NSArray<NSDictionary *> *> *)sciIconPages {
-    static NSArray *pages;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        // Instagram's seasonal and hidden designs first, then SCInsta's own
-        NSMutableArray *items = [NSMutableArray array];
-        for (NSDictionary *theme in [SCINotesThemeRuntime instagramSeasonalThemes]) [items addObject:theme];
-        [items addObject:@{ @"kind": @"custom", @"name": @"Custom gradient" }];
-        [items addObject:@{ @"kind": @"swap", @"name": @"Swap background and text" }];
-        for (NSDictionary *preset in [SCINotesThemeRuntime gradientPresets]) [items addObject:preset];
-        for (NSDictionary *preset in [SCINotesThemeRuntime seasonalPresets]) [items addObject:preset];
+%new - (NSArray<NSArray<NSDictionary *> *> *)sciBuildIconPages {
+    if (![SCIUtils getBoolPref:@"custom_note_themes"]) return @[];
 
-        // Same page size as Instagram's own palette pages
-        NSMutableArray *chunks = [NSMutableArray array];
-        for (NSUInteger i = 0; i < items.count; i += kSCIIconsPerPage) {
-            [chunks addObject:[items subarrayWithRange:NSMakeRange(i, MIN(kSCIIconsPerPage, items.count - i))]];
-        }
-        pages = chunks;
-    });
-    return [SCIUtils getBoolPref:@"custom_note_themes"] ? pages : @[];
+    // Official designs saved from Instagram's palette first, then SCInsta's own
+    NSMutableArray *items = [NSMutableArray array];
+    [items addObjectsFromArray:[SCINotesThemeRuntime savedOfficialThemes]];
+    [items addObject:@{ @"kind": @"swap", @"name": @"Swap background and text" }];
+    [items addObjectsFromArray:[SCINotesThemeRuntime colorPresets]];
+
+    // Same page size as Instagram's own palette pages
+    NSMutableArray *pages = [NSMutableArray array];
+    for (NSUInteger i = 0; i < items.count; i += kSCIIconsPerPage) {
+        [pages addObject:[items subarrayWithRange:NSMakeRange(i, MIN(kSCIIconsPerPage, items.count - i))]];
+    }
+    return pages;
+}
+
+%new - (NSArray<NSArray<NSDictionary *> *> *)sciIconPages {
+    NSArray *pages = objc_getAssociatedObject(SELF, &kSCIIconPagesKey);
+    if (!pages) {
+        pages = [SELF sciBuildIconPages];
+        objc_setAssociatedObject(SELF, &kSCIIconPagesKey, pages, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return pages;
 }
 
 %new - (NSDictionary *)sciIconAtIndexPath:(NSIndexPath *)indexPath {
@@ -544,6 +514,9 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 - (long long)numberOfSectionsInCollectionView:(UICollectionView *)collectionView {
     long long original = %orig;
     objc_setAssociatedObject(SELF, &kSCIOriginalSectionsKey, @(original), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    // Pick up official designs saved since the palette last loaded
+    objc_setAssociatedObject(SELF, &kSCIIconPagesKey, [SELF sciBuildIconPages], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     return original + [SELF sciIconPages].count;
 }
@@ -569,10 +542,12 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 - (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     if (![SELF sciIconAtIndexPath:indexPath]) return %orig;
 
-    // Match Instagram's color cells
+    // Square cells as tall as Instagram's (the icon inside leaves room between neighbours)
     NSInteger lastOriginal = [SELF sciOriginalSectionCount] - 1;
-    if (lastOriginal < 0) return CGSizeMake(44, 44);
-    return %orig(collectionView, layout, [NSIndexPath indexPathForItem:0 inSection:lastOriginal]);
+    if (lastOriginal < 0) return CGSizeMake(56, 56);
+    CGSize original = %orig(collectionView, layout, [NSIndexPath indexPathForItem:0 inSection:lastOriginal]);
+    CGFloat side = MIN(original.width, original.height);
+    return CGSizeMake(side, side);
 }
 
 - (UIEdgeInsets)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout insetForSectionAtIndex:(long long)section {
@@ -601,29 +576,34 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     if (!icon) {
         // One of Instagram's own themes; it replaces anything picked through SCInsta
         sciPendingThemeModel = nil;
+        sciPendingTheme = nil;
+        SELF.sciTheme = nil;
         %orig;
         return;
     }
 
-    NSString *kind = icon[@"kind"];
-    if ([kind isEqualToString:@"custom"]) {
-        SELF.gradientStartColor = nil;
-        [SELF presentColorPicker:@"GradientStart"];
+    if ([icon[@"kind"] isEqualToString:@"swap"]) {
+        NSMutableDictionary *theme = [[SELF sciBaseTheme] mutableCopy];
+        NSString *background = theme[@"background"] ?: @"000000";
+        theme[@"background"] = theme[@"text"] ?: @"FFFFFF";
+        theme[@"text"] = background;
+        theme[@"secondaryText"] = background;
+        theme[@"activationType"] = SCINotesUserCustomization;
+        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"name"]];
+        [SELF applySCITheme:theme];
+        return;
     }
-    else if ([kind isEqualToString:@"swap"]) {
-        UIColor *background = SELF.backgroundColor;
-        [SELF applySCIThemeWithBackground:SELF.textColor ?: [UIColor whiteColor]
-                                     text:background ?: [UIColor blackColor]
-                                    emoji:SELF.emojiText
-                              gradientEnd:nil
-                           activationType:kSCIUserCustomization];
+
+    NSMutableDictionary *theme = [icon mutableCopy];
+    [theme removeObjectForKey:@"name"];
+
+    // Color presets keep the current emoji; official designs bring their own
+    if (![SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) {
+        id emoji = [SELF sciBaseTheme][@"emoji"];
+        if (emoji) theme[@"emoji"] = emoji;
     }
-    else if (icon[@"activationType"]) {
-        [SELF applySCIThemeWithBackground:nil text:nil emoji:icon[@"emoji"] gradientEnd:nil activationType:icon[@"activationType"]];
-    }
-    else {
-        [SELF applySCIPreset:icon];
-    }
+
+    [SELF applySCITheme:theme];
 }
 
 - (void)layoutSubviews {
@@ -644,7 +624,16 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 %group NotesThemeReceiver
 %hook IGDirectNotesComposerViewController
 - (void)notesBubbleEditorViewControllerDidUpdateWithCustomThemeCreationModel:(id)model {
-    %orig(sciPendingThemeModel ?: model);
+    if (sciPendingThemeModel) {
+        [SCINotesThemeRuntime setAppliedTheme:sciPendingTheme];
+        %orig(sciPendingThemeModel);
+        return;
+    }
+
+    // Instagram's own theme: remember official designs so they can be used after their event
+    [SCINotesThemeRuntime setAppliedTheme:nil];
+    if (model) [SCINotesThemeRuntime saveOfficialThemeFromModel:model];
+    %orig;
 }
 %end
 %end
@@ -654,11 +643,13 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 %hook _TtC20IGDirectNotesUISwift39IGDirectNotesBubbleEditorViewController
 - (void)presentFrom:(id)arg1 noteContainerView:(id)arg2 thoughtBubbleView:(id)arg3 pogView:(id)arg4 initialCustomThemeCreationModel:(id)arg5 shouldPresentEmojiPicker:(BOOL)arg6 noteText:(id)arg7 {
     sciPendingThemeModel = nil;
+    sciPendingTheme = nil;
     %orig;
 }
 
 - (void)didTapClearButton {
     sciPendingThemeModel = nil;
+    sciPendingTheme = nil;
     %orig;
 }
 %end

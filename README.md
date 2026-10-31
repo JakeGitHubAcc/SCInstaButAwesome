@@ -34,7 +34,7 @@ A feature-rich tweak for Instagram on iOS!\
   - Hide friends map
   - Enable note theming
   - Custom note themes
-  - Gradient and seasonal note theme presets
+  - Note color presets, and official seasonal designs saved for use after their event
   - Unlock all note themes (seasonal options any day)
   - GIF notes with a song (experimental)
 - Focus/Distractions

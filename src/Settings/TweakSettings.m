@@ -49,7 +49,12 @@
                                                 [SCISetting switchCellWithTitle:@"Hide notes tray" subtitle:@"Hides the notes tray in the dm inbox" defaultsKey:@"hide_notes_tray"],
                                                 [SCISetting switchCellWithTitle:@"Hide friends map" subtitle:@"Hides the friends map icon in the notes tray" defaultsKey:@"hide_friends_map"],
                                                 [SCISetting switchCellWithTitle:@"Enable note theming" subtitle:@"Enables the ability to use the notes theme picker" defaultsKey:@"enable_notes_customization"],
-                                                [SCISetting switchCellWithTitle:@"Custom note themes" subtitle:@"Provides an option to set custom emojis and background/text colors, gradients and seasonal presets" defaultsKey:@"custom_note_themes"],
+                                                [SCISetting switchCellWithTitle:@"Custom note themes" subtitle:@"Adds custom emoji and background/text colors, color presets, and Instagram's official designs you've used before (they stay available after their event)" defaultsKey:@"custom_note_themes"],
+                                                [SCISetting buttonCellWithTitle:@"Forget saved official designs"
+                                                                           subtitle:@"Removes the official note designs saved from Instagram's palette"
+                                                                               icon:nil
+                                                                             action:^(void) { [SCINotesThemeRuntime clearSavedOfficialThemes]; }
+                                                ],
                                                 [SCISetting switchCellWithTitle:@"GIF notes with a song" subtitle:@"Pick a song in the note composer, then switch to a GIF: the posted note includes both (experimental, Instagram 453+)" defaultsKey:@"notes_gif_with_music"],
                                                 [SCISetting switchCellWithTitle:@"Unlock all note themes" subtitle:@"Turns on every note theme option, including seasonal and limited time ones, any day of the year" defaultsKey:@"notes_unlock_all_themes"],
                                             ]
@@ -242,7 +247,7 @@
                                                 [SCISetting switchCellWithTitle:@"Enable tweak settings quick-access" subtitle:@"Allows you to hold on the home tab to open the SCInsta settings" defaultsKey:@"settings_shortcut" requiresRestart:YES],
                                                 [SCISetting switchCellWithTitle:@"Show tweak settings on app launch" subtitle:@"Automatically opens the SCInsta settings when the app launches" defaultsKey:@"tweak_settings_app_launch"],
                                                 [SCISetting buttonCellWithTitle:@"Copy note theme fields"
-                                                                           subtitle:@"Copies the note theme classes in this Instagram version, for adding gradient support"
+                                                                           subtitle:@"Copies the note theme classes in this Instagram version, for supporting new versions"
                                                                                icon:nil
                                                                              action:^(void) {
                                                                                  [UIPasteboard generalPasteboard].string = [SCINotesThemeRuntime themeClassDump];

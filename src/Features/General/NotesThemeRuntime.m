@@ -2,6 +2,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
+NSString * const SCINotesUserCustomization = @"user_led_customization";
+
 @implementation SCINotesThemeRuntime
 
 // MARK: - Introspection
@@ -62,12 +64,24 @@
     return enabled;
 }
 
-// MARK: - Gradients
+// MARK: - Colors
 
 + (NSString *)hexForColor:(UIColor *)color {
+    if (!color) return nil;
     CGFloat r = 0, g = 0, b = 0, a = 0;
-    [color getRed:&r green:&g blue:&b alpha:&a];
+    if (![color getRed:&r green:&g blue:&b alpha:&a]) {
+        CGFloat white = 0;
+        [color getWhite:&white alpha:&a];
+        r = g = b = white;
+    }
     return [NSString stringWithFormat:@"%02lX%02lX%02lX", lround(r * 255), lround(g * 255), lround(b * 255)];
+}
+
++ (UIColor *)colorFromHex:(NSString *)hex {
+    if (!hex.length) return nil;
+    unsigned int value = 0;
+    [[NSScanner scannerWithString:[hex stringByReplacingOccurrencesOfString:@"#" withString:@""]] scanHexInt:&value];
+    return [UIColor colorWithRed:((value >> 16) & 0xFF) / 255.0 green:((value >> 8) & 0xFF) / 255.0 blue:(value & 0xFF) / 255.0 alpha:1.0];
 }
 
 // Converts a color to whatever type the model already stores in its gradient array
@@ -79,13 +93,6 @@
         return [(NSString *)example hasPrefix:@"#"] ? [@"#" stringByAppendingString:hex] : hex;
     }
 
-    if ([example isKindOfClass:[NSNumber class]]) {
-        CGFloat r = 0, g = 0, b = 0, a = 0;
-        [color getRed:&r green:&g blue:&b alpha:&a];
-        uint32_t argb = ((uint32_t)lround(a * 255) << 24) | ((uint32_t)lround(r * 255) << 16) | ((uint32_t)lround(g * 255) << 8) | (uint32_t)lround(b * 255);
-        return @(argb);
-    }
-
     if (CFGetTypeID((__bridge CFTypeRef)example) == CGColorGetTypeID()) {
         return (__bridge id)color.CGColor;
     }
@@ -93,48 +100,155 @@
     return color;
 }
 
-+ (id)themeModelWithBackground:(UIColor *)background
-                gradientColors:(NSArray<UIColor *> *)gradientColors
-                     textColor:(UIColor *)textColor
-                         emoji:(NSString *)emoji
-                activationType:(NSString *)activationType
-                       basedOn:(id)existing
-{
++ (id)valueOf:(id)object forKey:(NSString *)key {
+    if (!object || ![object respondsToSelector:NSSelectorFromString(key)]) return nil;
+    @try { return [object valueForKey:key]; }
+    @catch (NSException *exception) { return nil; }
+}
+
+// MARK: - Theme models
+
++ (BOOL)isOfficialActivationType:(NSString *)activationType {
+    return activationType.length && ![activationType isEqualToString:SCINotesUserCustomization] && ![activationType isEqualToString:@"unsupported"];
+}
+
++ (id)themeModelForTheme:(NSDictionary *)theme {
     Class modelClass = NSClassFromString(@"IGNotesCustomThemeCreationModel");
     SEL initializer = NSSelectorFromString(@"initWithBackgroundColor:gradientBackgroundColors:textColor:secondaryTextColor:customEmoji:customizationId:usedGeneratedTheme:activationType:");
     if (!modelClass || ![modelClass instancesRespondToSelector:initializer]) return nil;
 
-    // Values to carry over from the current theme
-    id (^existingValue)(NSString *) = ^id (NSString *key) {
-        if (!existing || ![existing respondsToSelector:NSSelectorFromString(key)]) return nil;
-        @try { return [existing valueForKey:key]; }
-        @catch (NSException *exception) { return nil; }
-    };
+    UIColor *background = [self colorFromHex:theme[@"background"]] ?: [UIColor blackColor];
+    UIColor *text = [self colorFromHex:theme[@"text"]] ?: [UIColor whiteColor];
+    UIColor *secondaryText = [self colorFromHex:theme[@"secondaryText"]] ?: text;
 
-    NSString *customizationId = existingValue(@"customizationId");
-    BOOL usedGeneratedTheme = [existingValue(@"usedGeneratedTheme") boolValue];
-    if (!activationType) activationType = existingValue(@"activationType");
-
-    // Match the element type Instagram already uses for gradients, if there is one
+    // Only official designs have gradients; Instagram can't share custom ones
     NSArray *gradient = nil;
-    if (gradientColors.count) {
-        NSArray *existingGradient = existingValue(@"gradientBackgroundColors");
-        id example = [existingGradient isKindOfClass:[NSArray class]] ? existingGradient.firstObject : nil;
-
-        NSMutableArray *converted = [NSMutableArray array];
-        for (UIColor *color in gradientColors) [converted addObject:[self color:color matchingExample:example]];
-        gradient = converted;
+    if ([theme[@"gradient"] count] > 1) {
+        NSMutableArray *colors = [NSMutableArray array];
+        for (NSString *hex in theme[@"gradient"]) [colors addObject:[self colorFromHex:hex]];
+        gradient = colors;
     }
 
     typedef id (*InitFunction)(id, SEL, UIColor *, NSArray *, UIColor *, UIColor *, NSString *, NSString *, BOOL, NSString *);
     InitFunction init = (InitFunction)objc_msgSend;
 
     @try {
-        return init([modelClass alloc], initializer, background, gradient, textColor, textColor, emoji, customizationId, usedGeneratedTheme, activationType);
+        return init([modelClass alloc], initializer, background, gradient, text, secondaryText, theme[@"emoji"], theme[@"customizationId"], NO, theme[@"activationType"]);
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Notes: couldn't create theme model: %@", exception.reason);
         return nil;
+    }
+}
+
++ (NSDictionary *)themeFromModel:(id)model {
+    if (!model) return nil;
+
+    NSMutableDictionary *theme = [NSMutableDictionary dictionary];
+    theme[@"background"] = [self hexForColor:[self valueOf:model forKey:@"backgroundColor"]];
+    theme[@"text"] = [self hexForColor:[self valueOf:model forKey:@"textColor"]];
+    theme[@"secondaryText"] = [self hexForColor:[self valueOf:model forKey:@"secondaryTextColor"]];
+    theme[@"emoji"] = [self valueOf:model forKey:@"customEmoji"];
+    theme[@"customizationId"] = [self valueOf:model forKey:@"customizationId"];
+    theme[@"activationType"] = [self valueOf:model forKey:@"activationType"];
+
+    NSMutableArray *gradient = [NSMutableArray array];
+    for (id color in [self valueOf:model forKey:@"gradientBackgroundColors"]) {
+        if ([color isKindOfClass:[UIColor class]]) [gradient addObject:[self hexForColor:color]];
+        else if ([color isKindOfClass:[NSString class]]) [gradient addObject:color];
+        else if (CFGetTypeID((__bridge CFTypeRef)color) == CGColorGetTypeID()) [gradient addObject:[self hexForColor:[UIColor colorWithCGColor:(__bridge CGColorRef)color]]];
+    }
+    if (gradient.count) theme[@"gradient"] = gradient;
+
+    return theme;
+}
+
+// MARK: - Official designs
+
+static NSString * const kSavedOfficialThemesKey = @"notes_saved_official_themes";
+
++ (NSArray<NSDictionary *> *)savedOfficialThemes {
+    NSDictionary *saved = [[NSUserDefaults standardUserDefaults] dictionaryForKey:kSavedOfficialThemesKey];
+    NSArray *order = [[self officialDesignNames] valueForKey:@"activationType"];
+
+    return [saved.allValues sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        NSUInteger ia = [order indexOfObject:a[@"activationType"]], ib = [order indexOfObject:b[@"activationType"]];
+        if (ia != ib) return ia < ib ? NSOrderedAscending : NSOrderedDescending;
+        return [a[@"activationType"] compare:b[@"activationType"]];
+    }];
+}
+
++ (void)saveOfficialThemeFromModel:(id)model {
+    NSMutableDictionary *theme = [[self themeFromModel:model] mutableCopy];
+    NSString *activationType = theme[@"activationType"];
+    if (![self isOfficialActivationType:activationType]) return;
+
+    for (NSDictionary *design in [self officialDesignNames]) {
+        if ([design[@"activationType"] isEqualToString:activationType]) theme[@"name"] = design[@"name"];
+    }
+    if (!theme[@"name"]) theme[@"name"] = activationType;
+
+    NSMutableDictionary *saved = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:kSavedOfficialThemesKey] mutableCopy] ?: [NSMutableDictionary dictionary];
+    // Several designs can share an activation type, so keep them apart by customization id too
+    NSString *key = [NSString stringWithFormat:@"%@|%@", activationType, theme[@"customizationId"] ?: @""];
+    if ([saved[key] isEqualToDictionary:theme]) return;
+
+    saved[key] = theme;
+    [[NSUserDefaults standardUserDefaults] setObject:saved forKey:kSavedOfficialThemesKey];
+    NSLog(@"[SCInsta] Notes: saved official design %@", theme);
+}
+
++ (void)clearSavedOfficialThemes {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kSavedOfficialThemesKey];
+}
+
+// MARK: - Sharing
+
+static NSDictionary *sciAppliedTheme;
+
++ (void)setAppliedTheme:(NSDictionary *)theme {
+    sciAppliedTheme = [theme copy];
+}
+
+// Instagram builds the shared theme (IGXDTNoteCustomThemeInput) from the composer's theme model.
+// That only carries solid colors, an emoji, and the official design's activation type and
+// customization id. A custom theme must not carry an official design's id or activation type
+// (the note then posts with the default grey), so those are cleared here at posting time.
++ (void)applyThemeToNoteRequest:(id)request {
+    NSDictionary *theme = sciAppliedTheme;
+    if (!theme) return;
+
+    @try {
+        id params = [request valueForKey:@"noteCreateParams"];
+        if (!params) return;
+
+        id input = [params valueForKey:@"noteCustomization"];
+        if (!input) {
+            Class inputClass = NSClassFromString(@"IGXDTNoteCustomThemeInput");
+            if (!inputClass) return;
+            input = [inputClass new];
+        }
+
+        // Match the hex format Instagram already used, if any
+        NSString *existingHex = [input valueForKey:@"backgroundColorHex"];
+        NSString *prefix = (!existingHex || [existingHex hasPrefix:@"#"]) ? @"#" : @"";
+        NSString *(^hex)(NSString *) = ^NSString *(NSString *value) {
+            return value.length ? [prefix stringByAppendingString:value] : nil;
+        };
+
+        [input setValue:hex(theme[@"background"]) forKey:@"backgroundColorHex"];
+        [input setValue:hex(theme[@"text"]) forKey:@"textColorHex"];
+        [input setValue:hex(theme[@"secondaryText"] ?: theme[@"text"]) forKey:@"secondaryTextColorHex"];
+        if (theme[@"emoji"]) [input setValue:theme[@"emoji"] forKey:@"customEmoji"];
+
+        BOOL official = [self isOfficialActivationType:theme[@"activationType"]];
+        [input setValue:official ? theme[@"activationType"] : SCINotesUserCustomization forKey:@"activationType"];
+        [input setValue:official ? theme[@"customizationId"] : nil forKey:@"customizationId"];
+
+        [params setValue:input forKey:@"noteCustomization"];
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Notes: couldn't apply theme to note request: %@", exception.reason);
     }
 }
 
@@ -186,42 +300,35 @@
 
 // MARK: - Presets
 
-+ (UIColor *)colorFromHex:(NSString *)hex {
-    unsigned int value = 0;
-    [[NSScanner scannerWithString:hex] scanHexInt:&value];
-    return [UIColor colorWithRed:((value >> 16) & 0xFF) / 255.0 green:((value >> 8) & 0xFF) / 255.0 blue:(value & 0xFF) / 255.0 alpha:1.0];
++ (NSDictionary *)presetNamed:(NSString *)name background:(NSString *)background text:(NSString *)text {
+    return @{ @"name": name, @"background": background, @"text": text, @"activationType": SCINotesUserCustomization };
 }
 
-+ (NSDictionary *)presetNamed:(NSString *)name background:(NSString *)background text:(NSString *)text emoji:(NSString *)emoji gradientEnd:(nullable NSString *)gradientEnd {
-    NSMutableDictionary *preset = [NSMutableDictionary dictionary];
-    preset[@"name"] = name;
-    preset[@"background"] = [self colorFromHex:background];
-    preset[@"text"] = [self colorFromHex:text];
-    preset[@"emoji"] = emoji;
-    if (gradientEnd) preset[@"gradientEnd"] = [self colorFromHex:gradientEnd];
-    return preset;
-}
-
-+ (NSArray<NSDictionary *> *)seasonalPresets {
++ (NSArray<NSDictionary *> *)colorPresets {
+    // Solid colors only: Instagram can't share custom gradients
     return @[
-        [self presetNamed:@"New Year"         background:@"111111" text:@"F5D76E" emoji:@"🎆" gradientEnd:@"3A2E5C"],
-        [self presetNamed:@"Valentine's Day"  background:@"FF4D6D" text:@"FFFFFF" emoji:@"💘" gradientEnd:@"FF8FA3"],
-        [self presetNamed:@"St. Patrick's Day" background:@"1E8449" text:@"FFFFFF" emoji:@"☘️" gradientEnd:@"58D68D"],
-        [self presetNamed:@"Spring"           background:@"F8C8DC" text:@"5B3256" emoji:@"🌸" gradientEnd:@"C8F0D8"],
-        [self presetNamed:@"Pride"            background:@"E40303" text:@"FFFFFF" emoji:@"🏳️‍🌈" gradientEnd:@"732982"],
-        [self presetNamed:@"Summer"           background:@"FFB347" text:@"1B4F72" emoji:@"🌴" gradientEnd:@"FFE29A"],
-        [self presetNamed:@"Back to school"   background:@"F4D03F" text:@"1C2833" emoji:@"✏️" gradientEnd:nil],
-        [self presetNamed:@"Autumn"           background:@"A04000" text:@"FDEBD0" emoji:@"🍂" gradientEnd:@"D68910"],
-        [self presetNamed:@"Halloween"        background:@"FF7518" text:@"111111" emoji:@"🎃" gradientEnd:@"6C3483"],
-        [self presetNamed:@"Thanksgiving"     background:@"784212" text:@"FAE5D3" emoji:@"🦃" gradientEnd:@"CA6F1E"],
-        [self presetNamed:@"Winter"           background:@"D6EAF8" text:@"1B4F72" emoji:@"❄️" gradientEnd:@"FFFFFF"],
-        [self presetNamed:@"Christmas"        background:@"B03A2E" text:@"FFFFFF" emoji:@"🎄" gradientEnd:@"1E8449"],
+        [self presetNamed:@"Midnight"      background:@"111111" text:@"F5D76E"],
+        [self presetNamed:@"Rose"          background:@"FF4D6D" text:@"FFFFFF"],
+        [self presetNamed:@"Clover"        background:@"1E8449" text:@"FFFFFF"],
+        [self presetNamed:@"Blossom"       background:@"F8C8DC" text:@"5B3256"],
+        [self presetNamed:@"Sunset"        background:@"FF5F6D" text:@"FFFFFF"],
+        [self presetNamed:@"Mango"         background:@"FFB347" text:@"1B4F72"],
+        [self presetNamed:@"Lemon"         background:@"F4D03F" text:@"1C2833"],
+        [self presetNamed:@"Maple"         background:@"A04000" text:@"FDEBD0"],
+        [self presetNamed:@"Pumpkin"       background:@"FF7518" text:@"111111"],
+        [self presetNamed:@"Cocoa"         background:@"784212" text:@"FAE5D3"],
+        [self presetNamed:@"Frost"         background:@"D6EAF8" text:@"1B4F72"],
+        [self presetNamed:@"Holly"         background:@"B03A2E" text:@"FFFFFF"],
+        [self presetNamed:@"Ocean"         background:@"2193B0" text:@"FFFFFF"],
+        [self presetNamed:@"Violet"        background:@"7F00FF" text:@"FFFFFF"],
+        [self presetNamed:@"Peach"         background:@"FFB88C" text:@"4A2C2A"],
+        [self presetNamed:@"Graphite"      background:@"414345" text:@"FFFFFF"],
     ];
 }
 
-+ (NSArray<NSDictionary *> *)instagramSeasonalThemes {
-    // Every IGXDTNoteActivationTypeEnum value in Instagram 453 (418 has the ones without "2026",
-    // "arirang" and "listening_now"). Instagram only offers them in its palette during their event.
++ (NSArray<NSDictionary *> *)officialDesignNames {
+    // Names and order for saved official designs: every IGXDTNoteActivationTypeEnum value in
+    // Instagram 453 (418 has the ones without "2026", "arirang" and "listening_now")
     return @[
         @{ @"name": @"Halloween skull 2026",       @"emoji": @"💀", @"activationType": @"halloween_note_skull_2026" },
         @{ @"name": @"Halloween bat 2026",         @"emoji": @"🦇", @"activationType": @"halloween_note_bat_2026" },
@@ -241,17 +348,6 @@
         @{ @"name": @"March Madness team 2",       @"emoji": @"🥇", @"activationType": @"march_madness_championship_team2_notes" },
         @{ @"name": @"Arirang",                    @"emoji": @"💜", @"activationType": @"arirang" },
         @{ @"name": @"Listening now",              @"emoji": @"🎧", @"activationType": @"listening_now_launch_note" },
-    ];
-}
-
-+ (NSArray<NSDictionary *> *)gradientPresets {
-    return @[
-        [self presetNamed:@"Sunset"     background:@"FF5F6D" text:@"FFFFFF" emoji:@"🌅" gradientEnd:@"FFC371"],
-        [self presetNamed:@"Ocean"      background:@"2193B0" text:@"FFFFFF" emoji:@"🌊" gradientEnd:@"6DD5ED"],
-        [self presetNamed:@"Aurora"     background:@"00C9FF" text:@"0B2545" emoji:@"🌌" gradientEnd:@"92FE9D"],
-        [self presetNamed:@"Purple haze" background:@"7F00FF" text:@"FFFFFF" emoji:@"🔮" gradientEnd:@"E100FF"],
-        [self presetNamed:@"Peach"      background:@"FFB88C" text:@"4A2C2A" emoji:@"🍑" gradientEnd:@"DE6262"],
-        [self presetNamed:@"Midnight"   background:@"232526" text:@"FFFFFF" emoji:@"🌙" gradientEnd:@"414345"],
     ];
 }
 
