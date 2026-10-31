@@ -34,6 +34,7 @@
                                             @"header": @"",
                                             @"rows": @[
                                                 [SCISetting switchCellWithTitle:@"Hide ads" subtitle:@"Removes all ads from the Instagram app" defaultsKey:@"hide_ads"],
+                                                [SCISetting switchCellWithTitle:@"Hide Instagram Beta update screens" subtitle:@"Stops Instagram Beta (TestFlight) builds from blocking the app with \"It's time to update\" and update nudges" defaultsKey:@"hide_testflight_prompts" requiresRestart:YES],
                                                 [SCISetting switchCellWithTitle:@"Hide Meta AI" subtitle:@"Hides the meta ai buttons/functionality within the app" defaultsKey:@"hide_meta_ai"],
                                                 [SCISetting switchCellWithTitle:@"Copy description" subtitle:@"Copy description text fields by long-pressing on them" defaultsKey:@"copy_description"],
                                                 [SCISetting switchCellWithTitle:@"Do not save recent searches" subtitle:@"Search bars will no longer save your recent searches" defaultsKey:@"no_recent_searches"],

@@ -24,6 +24,7 @@ A feature-rich tweak for Instagram on iOS!\
 ### General
 - Hide ads
 - Hide Meta AI
+- Hide Instagram Beta (TestFlight) update screens
 - Copy description
 - Do not save recent searches
 - Use detailed (native) color picker
