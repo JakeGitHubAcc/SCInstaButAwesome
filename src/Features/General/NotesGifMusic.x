@@ -11,6 +11,11 @@
 
 static NSDictionary *sciSavedSong; // clusterId, assetId, startTime, duration (seconds)
 
+// Instagram 453's own music content for the note (IGMusicNoteContentSnapshot), which can fill in
+// the song exactly as a song note would. Preferred over sciSavedSong.
+static id sciSavedMusicSnapshot;
+static NSString *sciAnnouncedClusterId;
+
 static NSString *SCIStringForKeys(id object, NSArray<NSString *> *keys) {
     for (NSString *key in keys) {
         if (![object respondsToSelector:NSSelectorFromString(key)]) continue;
@@ -38,6 +43,13 @@ static void SCIShowSongMessage(NSString *message, BOOL success) {
     });
 }
 
+static void SCIAnnounceSong(NSString *clusterId, NSString *title) {
+    if ([sciAnnouncedClusterId isEqualToString:clusterId]) return;
+    sciAnnouncedClusterId = clusterId;
+
+    SCIShowSongMessage(title.length ? [NSString stringWithFormat:@"♪ %@\nsaved for a GIF note", title] : @"♪ Song saved for a GIF note", YES);
+}
+
 static void SCISaveSong(id audio, double startTime, double duration) {
     NSString *clusterId = SCIStringForKeys(audio, @[@"audioClusterId", @"audioClusterID"]);
     if (!clusterId.length) {
@@ -57,8 +69,7 @@ static void SCISaveSong(id audio, double startTime, double duration) {
 
     NSLog(@"[SCInsta] Notes: saved song %@ for GIF notes", song);
 
-    NSString *title = SCIStringForKeys(audio, @[@"title", @"songName", @"displayTitle", @"name"]);
-    SCIShowSongMessage(title.length ? [NSString stringWithFormat:@"♪ %@\nsaved for a GIF note", title] : @"♪ Song saved for a GIF note", YES);
+    SCIAnnounceSong(clusterId, SCIStringForKeys(audio, @[@"title", @"songName", @"displayTitle", @"name"]));
 }
 
 // The composer's selected song (IGDirectNotesMusicNoteViewModel: selectedMusic, startTime)
@@ -80,6 +91,47 @@ static void SCISaveSongFromViewModel(id viewModel) {
 static NSNumber *SCIMilliseconds(NSNumber *seconds) {
     double value = seconds.doubleValue;
     return @(llround(value > 1000 ? value : value * 1000));
+}
+
+// Lets Instagram's music snapshot fill a scratch copy of the note params, then moves only its
+// musicNoteCreateInfo into the GIF note's params
+static BOOL SCIAddMusicSnapshotToParams(id params) {
+    if (![SCIUtils getBoolPref:@"notes_gif_with_music"] || !sciSavedMusicSnapshot || !params) return NO;
+
+    @try {
+        id info = [params valueForKey:@"noteCreateInfo"];
+        if (!info || [info valueForKey:@"musicNoteCreateInfo"]) return NO;
+
+        id scratch = nil;
+        SEL initWithText = NSSelectorFromString(@"initWithText:");
+        if ([[params class] instancesRespondToSelector:initWithText]) {
+            scratch = ((id (*)(id, SEL, id))objc_msgSend)([[params class] alloc], initWithText, @"");
+        }
+        else {
+            scratch = [[params class] new];
+        }
+
+        ((void (*)(id, SEL, id))objc_msgSend)(sciSavedMusicSnapshot, NSSelectorFromString(@"populateCreateParams:"), scratch);
+
+        id music = [[scratch valueForKey:@"noteCreateInfo"] valueForKey:@"musicNoteCreateInfo"];
+        if (!music) {
+            SCIShowSongMessage(@"Couldn't add the song: Instagram didn't fill it in", NO);
+            return NO;
+        }
+
+        [info setValue:music forKey:@"musicNoteCreateInfo"];
+        NSLog(@"[SCInsta] Notes: added song snapshot to GIF note");
+        SCIShowSongMessage(@"♪ Song added to your GIF note", YES);
+
+        sciSavedMusicSnapshot = nil;
+        sciSavedSong = nil;
+        return YES;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[SCInsta] Notes: couldn't add song snapshot to GIF note: %@", exception.reason);
+        SCIShowSongMessage([NSString stringWithFormat:@"Couldn't add the song: %@", exception.reason], NO);
+        return NO;
+    }
 }
 
 static void SCIAddSavedSongToRequest(id request) {
@@ -140,11 +192,57 @@ static void SCIAddSavedSongToRequest(id request) {
 
 %end
 
+// Instagram 453's note content plugins: the music snapshot is created when a song is picked, and
+// the GIF snapshot fills in the request when a GIF note is posted
+// Demangled name: IGMusicFamilyNoteContent.IGMusicNoteContentSnapshot
+%hook _TtC24IGMusicFamilyNoteContent26IGMusicNoteContentSnapshot
+- (id)initWithMusicViewModel:(id)viewModel {
+    id snapshot = %orig;
+
+    if (snapshot) {
+        sciSavedMusicSnapshot = snapshot;
+
+        NSString *clusterId = SCIStringForKeys(snapshot, @[@"audioClusterId"]);
+        if (clusterId.length) SCIAnnounceSong(clusterId, SCIStringForKeys(snapshot, @[@"displayTitle"]));
+    }
+    return snapshot;
+}
+%end
+
+// Demangled name: IGDirectGIFNoteCreationPlugin.IGGIFNoteContentSnapshot
+%hook _TtC29IGDirectGIFNoteCreationPlugin24IGGIFNoteContentSnapshot
+- (void)populateCreateParams:(id)params {
+    %orig;
+    SCIAddMusicSnapshotToParams(params);
+}
+%end
+
+// The music button's controller (Instagram 453+); a backup for the snapshot above
+// Demangled name: IGDirectMusicNoteCreationPlugin.IGMusicNoteCreationController
+%hook _TtC31IGDirectMusicNoteCreationPlugin29IGMusicNoteCreationController
+- (void)audioEditorViewControllerDelegateDidTapDone:(id)editor selectedAudio:(id)audio audioStartTime:(double)startTime audioDuration:(double)duration selectedLyricPhrase:(id)lyrics {
+    SCISaveSong(audio, startTime, duration);
+    %orig;
+}
+
+- (void)audioBrowserViewController:(id)browser didSelectAudioTrack:(id)track context:(id)context {
+    SCISaveSong(track, 0, 0);
+    %orig;
+}
+
+- (void)audioBrowserViewController:(id)browser didTapAudioTrack:(id)track context:(id)context {
+    SCISaveSong(track, 0, 0);
+    %orig;
+}
+%end
+
 // A new note starts without a saved song or SCInsta theme
 // Demangled name: IGDirectNotesCreationComposerUI.IGDirectNotesComposerViewController
 %hook _TtC31IGDirectNotesCreationComposerUI35IGDirectNotesComposerViewController
 - (void)viewDidLoad {
     sciSavedSong = nil;
+    sciSavedMusicSnapshot = nil;
+    sciAnnouncedClusterId = nil;
     [SCINotesThemeRuntime setAppliedTheme:nil];
     %orig;
 }
