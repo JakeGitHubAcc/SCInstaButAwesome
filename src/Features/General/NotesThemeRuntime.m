@@ -134,9 +134,18 @@ NSString * const SCINotesUserCustomization = @"user_led_customization";
 }
 
 + (NSArray<NSDictionary *> *)decorations {
+    // Only designs Instagram has shown in its own palette: it resets notes using a design it no
+    // longer has (like an earlier year's Halloween pumpkin) to the default, colors included
     NSMutableArray *decorations = [NSMutableArray array];
-    for (NSDictionary *design in [self officialDesignNames]) {
-        [decorations addObject:@{ @"kind": @"decoration", @"name": design[@"name"], @"emoji": design[@"emoji"], @"decoration": design[@"activationType"] }];
+    NSMutableSet *seen = [NSMutableSet set];
+
+    for (NSDictionary *theme in [self savedOfficialThemes]) {
+        NSString *activationType = theme[@"activationType"];
+        if (!activationType.length || [seen containsObject:activationType]) continue;
+        [seen addObject:activationType];
+
+        NSString *emoji = [self emojiForActivationType:activationType] ?: theme[@"emoji"] ?: @"✨";
+        [decorations addObject:@{ @"kind": @"decoration", @"name": theme[@"name"] ?: activationType, @"emoji": emoji, @"decoration": activationType }];
     }
     return decorations;
 }

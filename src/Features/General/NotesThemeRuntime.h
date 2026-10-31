@@ -34,7 +34,7 @@ extern NSString * const SCINotesUserCustomization;
 + (nullable NSString *)decorationOfTheme:(nullable NSDictionary *)theme;
 + (nullable NSString *)emojiForActivationType:(nullable NSString *)activationType;
 
-// Every official design's type, to add on top of custom colors (Instagram 453's list)
+// Saved official designs' types, to add on top of custom colors
 + (NSArray<NSDictionary *> *)decorations;
 
 // Official designs are only sent to the app during their event, so each one picked in
