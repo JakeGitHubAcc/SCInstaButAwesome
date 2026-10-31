@@ -6,7 +6,8 @@
 //
 // Instagram's note schema has separate gifNoteCreateInfo and musicNoteCreateInfo fields, but the
 // composer only keeps one kind of content. So the last song picked in the note composer is saved
-// here, and added to the request when the note is posted with a GIF and no music.
+// here, and added to the request when the note is posted with a GIF and no music. It's kept when
+// the song is removed (switching to a GIF may need that) until the note is posted or a new one starts.
 
 static NSDictionary *sciSavedSong; // clusterId, assetId, startTime, duration (seconds)
 
@@ -137,10 +138,6 @@ static void SCIAddSavedSongToRequest(id request) {
     %orig;
 }
 
-- (void)audioEditorViewControllerDelegateDidTapRemoveAudio:(id)editor {
-    sciSavedSong = nil;
-    %orig;
-}
 %end
 
 // A new note starts without a saved song or SCInsta theme
