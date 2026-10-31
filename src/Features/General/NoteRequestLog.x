@@ -1,9 +1,11 @@
 #import "../../Utils.h"
 #import "NoteRequestLog.h"
+#import <objc/runtime.h>
 
-// Records the bodies of note creation requests (Debug > Log note requests), so the
-// request format for things like GIF notes with music can be worked out.
-// Only the URL path and body are kept, never headers, and ids/tokens are redacted.
+// Records note creation requests (Debug > Log note requests), so the request format for
+// things like GIF notes with music can be worked out. Instagram 453 sends notes through its
+// own networking as GraphQL input objects, so those objects are recorded field by field;
+// plain NSURLRequest bodies are recorded too. Headers are never kept, and ids/tokens are redacted.
 
 static NSUInteger const kSCIMaxLogLength = 60000;
 
@@ -82,14 +84,67 @@ static NSUInteger const kSCIMaxLogLength = 60000;
     if (!body.length || ![SCIUtils getBoolPref:@"notes_request_log"]) return;
     if (![url.host hasSuffix:@"instagram.com"] || ![url.path.lowercaseString containsString:@"note"]) return;
 
-    NSString *entry = [NSString stringWithFormat:@"==== %@  %@\n%@\n\n", [NSDate date], url.path, [self describeBody:body]];
+    [self appendEntry:[NSString stringWithFormat:@"==== %@  %@\n%@\n\n", [NSDate date], url.path, [self describeBody:body]]];
+}
 
++ (void)appendEntry:(NSString *)entry {
     @synchronized (self) {
         NSString *existing = [NSString stringWithContentsOfURL:[self logURL] encoding:NSUTF8StringEncoding error:nil] ?: @"";
         NSString *combined = [existing stringByAppendingString:entry];
         if (combined.length > kSCIMaxLogLength) combined = [combined substringFromIndex:combined.length - kSCIMaxLogLength];
         [combined writeToURL:[self logURL] atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
+}
+
+// Describes a GraphQL input object through its declared properties (their getters are
+// generated at runtime, so they're read with KVC)
++ (id)describeObject:(id)object depth:(NSInteger)depth {
+    if (!object || object == [NSNull null]) return @"null";
+    if ([object isKindOfClass:[NSString class]] || [object isKindOfClass:[NSNumber class]]) return object;
+    if ([object isKindOfClass:[NSArray class]]) {
+        NSMutableArray *items = [NSMutableArray array];
+        for (id item in (NSArray *)object) [items addObject:[self describeObject:item depth:depth]];
+        return items;
+    }
+    if ([object isKindOfClass:[NSDictionary class]]) return [self redact:object];
+    if (depth <= 0) return [NSString stringWithFormat:@"<%@>", NSStringFromClass([object class])];
+
+    NSMutableDictionary *fields = [NSMutableDictionary dictionary];
+    fields[@"_class"] = NSStringFromClass([object class]);
+
+    for (Class cls = [object class]; cls && cls != [NSObject class]; cls = class_getSuperclass(cls)) {
+        unsigned int count = 0;
+        objc_property_t *properties = class_copyPropertyList(cls, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            NSString *name = @(property_getName(properties[i]));
+            if (fields[name] || [@[@"hash", @"superclass", @"description", @"debugDescription"] containsObject:name]) continue;
+
+            if ([self shouldRedactKey:name]) {
+                fields[name] = @"<redacted>";
+                continue;
+            }
+
+            id value = nil;
+            @try { value = [object valueForKey:name]; }
+            @catch (NSException *exception) { continue; }
+            if (value) fields[name] = [self describeObject:value depth:depth - 1];
+        }
+        free(properties);
+    }
+    return fields;
+}
+
++ (void)recordObject:(id)object title:(NSString *)title {
+    if (![SCIUtils getBoolPref:@"notes_request_log"]) return;
+
+    id description = [self describeObject:object depth:5];
+    NSString *text = [description isKindOfClass:[NSString class]] ? description : nil;
+    if (!text) {
+        NSData *json = [NSJSONSerialization isValidJSONObject:description] ? [NSJSONSerialization dataWithJSONObject:description options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:nil] : nil;
+        text = json ? [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] : [description description];
+    }
+
+    [self appendEntry:[NSString stringWithFormat:@"==== %@  %@\n%@\n\n", [NSDate date], title, text]];
 }
 
 + (NSString *)contents {
@@ -108,5 +163,22 @@ static NSUInteger const kSCIMaxLogLength = 60000;
     %orig;
 
     [SCINoteRequestLog recordBody:body forURL:self.URL];
+}
+%end
+
+// Instagram 453+: the parts of a note as Instagram builds them
+%hook IGXDTMusicNoteCreateInfo
+- (id)initWithAudioClusterId:(id)clusterId {
+    id result = %orig;
+    [SCINoteRequestLog recordObject:result title:@"IGXDTMusicNoteCreateInfo (as created)"];
+    return result;
+}
+%end
+
+%hook IGXDTGifNoteCreateInfo
+- (id)initWithGifParams:(id)params {
+    id result = %orig;
+    [SCINoteRequestLog recordObject:result title:@"IGXDTGifNoteCreateInfo (as created)"];
+    return result;
 }
 %end

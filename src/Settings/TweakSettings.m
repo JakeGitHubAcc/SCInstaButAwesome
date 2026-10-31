@@ -50,6 +50,7 @@
                                                 [SCISetting switchCellWithTitle:@"Hide friends map" subtitle:@"Hides the friends map icon in the notes tray" defaultsKey:@"hide_friends_map"],
                                                 [SCISetting switchCellWithTitle:@"Enable note theming" subtitle:@"Enables the ability to use the notes theme picker" defaultsKey:@"enable_notes_customization"],
                                                 [SCISetting switchCellWithTitle:@"Custom note themes" subtitle:@"Provides an option to set custom emojis and background/text colors, gradients and seasonal presets" defaultsKey:@"custom_note_themes"],
+                                                [SCISetting switchCellWithTitle:@"GIF notes with a song" subtitle:@"Pick a song in the note composer, then switch to a GIF: the posted note includes both (experimental, Instagram 453+)" defaultsKey:@"notes_gif_with_music"],
                                                 [SCISetting switchCellWithTitle:@"Unlock all note themes" subtitle:@"Turns on every note theme option, including seasonal and limited time ones, any day of the year" defaultsKey:@"notes_unlock_all_themes"],
                                             ]
                                         },

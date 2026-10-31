@@ -36,6 +36,7 @@ A feature-rich tweak for Instagram on iOS!\
   - Custom note themes
   - Gradient and seasonal note theme presets
   - Unlock all note themes (seasonal options any day)
+  - GIF notes with a song (experimental)
 - Focus/Distractions
   - No suggested users
   - No suggested chats
