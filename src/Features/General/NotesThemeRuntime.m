@@ -220,18 +220,27 @@
 }
 
 + (NSArray<NSDictionary *> *)instagramSeasonalThemes {
-    // Values of the IGXDTNoteActivationTypeEnum constants in Instagram 418.2.0
+    // Every IGXDTNoteActivationTypeEnum value in Instagram 453 (418 has the ones without "2026",
+    // "arirang" and "listening_now"). Instagram only offers them in its palette during their event.
     return @[
-        @{ @"name": @"Halloween pumpkin",  @"emoji": @"🎃", @"activationType": @"halloween_note_pumpkin" },
-        @{ @"name": @"Halloween bat",      @"emoji": @"🦇", @"activationType": @"halloween_note_bat" },
-        @{ @"name": @"Halloween spider",   @"emoji": @"🕷️", @"activationType": @"halloween_note_spider" },
-        @{ @"name": @"Valentine's red",    @"emoji": @"❤️", @"activationType": @"valentines_red" },
-        @{ @"name": @"Valentine's pink",   @"emoji": @"🩷", @"activationType": @"valentines_pink" },
-        @{ @"name": @"Valentine's black",  @"emoji": @"🖤", @"activationType": @"valentines_black" },
-        @{ @"name": @"New Year's Eve",     @"emoji": @"🎆", @"activationType": @"nye_2025" },
-        @{ @"name": @"End of year",        @"emoji": @"✨", @"activationType": @"end_of_year_notes" },
-        @{ @"name": @"Graduation",         @"emoji": @"🎓", @"activationType": @"end_of_school_graduation_notes" },
-        @{ @"name": @"March Madness",      @"emoji": @"🏀", @"activationType": @"march_madness_generic_notes" },
+        @{ @"name": @"Halloween skull 2026",       @"emoji": @"💀", @"activationType": @"halloween_note_skull_2026" },
+        @{ @"name": @"Halloween bat 2026",         @"emoji": @"🦇", @"activationType": @"halloween_note_bat_2026" },
+        @{ @"name": @"Halloween ghost 2026",       @"emoji": @"👻", @"activationType": @"halloween_note_ghost_2026" },
+        @{ @"name": @"Halloween pumpkin",          @"emoji": @"🎃", @"activationType": @"halloween_note_pumpkin" },
+        @{ @"name": @"Halloween bat",              @"emoji": @"🦇", @"activationType": @"halloween_note_bat" },
+        @{ @"name": @"Halloween spider",           @"emoji": @"🕷️", @"activationType": @"halloween_note_spider" },
+        @{ @"name": @"Halloween",                  @"emoji": @"🕸️", @"activationType": @"halloween_notes" },
+        @{ @"name": @"Valentine's red",            @"emoji": @"❤️", @"activationType": @"valentines_red" },
+        @{ @"name": @"Valentine's pink",           @"emoji": @"🩷", @"activationType": @"valentines_pink" },
+        @{ @"name": @"Valentine's black",          @"emoji": @"🖤", @"activationType": @"valentines_black" },
+        @{ @"name": @"New Year's Eve",             @"emoji": @"🎆", @"activationType": @"nye_2025" },
+        @{ @"name": @"End of year",                @"emoji": @"✨", @"activationType": @"end_of_year_notes" },
+        @{ @"name": @"Graduation",                 @"emoji": @"🎓", @"activationType": @"end_of_school_graduation_notes" },
+        @{ @"name": @"March Madness",              @"emoji": @"🏀", @"activationType": @"march_madness_generic_notes" },
+        @{ @"name": @"March Madness team 1",       @"emoji": @"🏆", @"activationType": @"march_madness_championship_team1_notes" },
+        @{ @"name": @"March Madness team 2",       @"emoji": @"🥇", @"activationType": @"march_madness_championship_team2_notes" },
+        @{ @"name": @"Arirang",                    @"emoji": @"💜", @"activationType": @"arirang" },
+        @{ @"name": @"Listening now",              @"emoji": @"🎧", @"activationType": @"listening_now_launch_note" },
     ];
 }
 

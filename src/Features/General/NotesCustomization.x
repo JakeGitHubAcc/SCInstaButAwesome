@@ -516,12 +516,13 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     static NSArray *pages;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        // Instagram's seasonal and hidden designs first, then SCInsta's own
         NSMutableArray *items = [NSMutableArray array];
+        for (NSDictionary *theme in [SCINotesThemeRuntime instagramSeasonalThemes]) [items addObject:theme];
         [items addObject:@{ @"kind": @"custom", @"name": @"Custom gradient" }];
         [items addObject:@{ @"kind": @"swap", @"name": @"Swap background and text" }];
         for (NSDictionary *preset in [SCINotesThemeRuntime gradientPresets]) [items addObject:preset];
         for (NSDictionary *preset in [SCINotesThemeRuntime seasonalPresets]) [items addObject:preset];
-        for (NSDictionary *theme in [SCINotesThemeRuntime instagramSeasonalThemes]) [items addObject:theme];
 
         // Same page size as Instagram's own palette pages
         NSMutableArray *chunks = [NSMutableArray array];

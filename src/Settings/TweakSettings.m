@@ -1,6 +1,7 @@
 #import "TweakSettings.h"
 #import "../Features/ProfileAnalyzer/SCIProfileAnalyzerViewController.h"
 #import "../Features/General/NotesThemeRuntime.h"
+#import "../Features/General/NoteRequestLog.h"
 
 @implementation SCITweakSettings
 
@@ -250,6 +251,24 @@
                                                                                  [hud showInView:topMostController().view];
                                                                                  [hud dismissAfterDelay:1.5];
                                                                              }
+                                                ],
+                                                [SCISetting switchCellWithTitle:@"Log note requests" subtitle:@"Records what Instagram sends when you post a note (no login details), for adding new note features" defaultsKey:@"notes_request_log"],
+                                                [SCISetting buttonCellWithTitle:@"Copy note request log"
+                                                                           subtitle:@""
+                                                                               icon:nil
+                                                                             action:^(void) {
+                                                                                 [UIPasteboard generalPasteboard].string = [SCINoteRequestLog contents];
+                                                                                 JGProgressHUD *hud = [[JGProgressHUD alloc] init];
+                                                                                 hud.textLabel.text = @"Copied";
+                                                                                 hud.indicatorView = [[JGProgressHUDSuccessIndicatorView alloc] init];
+                                                                                 [hud showInView:topMostController().view];
+                                                                                 [hud dismissAfterDelay:1.5];
+                                                                             }
+                                                ],
+                                                [SCISetting buttonCellWithTitle:@"Clear note request log"
+                                                                           subtitle:@""
+                                                                               icon:nil
+                                                                             action:^(void) { [SCINoteRequestLog clear]; }
                                                 ],
                                                 [SCISetting buttonCellWithTitle:@"Reset onboarding completion state"
                                                                            subtitle:@""
