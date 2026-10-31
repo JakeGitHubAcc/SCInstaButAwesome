@@ -439,6 +439,7 @@
 - (void)presentColorPicker:(NSString *)target; // new
 - (void)applySCICustomTheme:(NSString *)target; // new
 - (void)applySCITheme:(NSDictionary *)theme; // new
+- (void)sciApplyThemeNow:(NSDictionary *)theme; // new
 - (NSDictionary *)sciBaseTheme; // new
 - (NSInteger)sciOriginalSectionCount; // new
 - (NSArray *)sciIconPages; // new

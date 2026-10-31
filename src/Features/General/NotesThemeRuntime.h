@@ -13,7 +13,8 @@ extern NSString * const SCINotesUserCustomization;
 /// so these look properties up by name at runtime instead of hardcoding them.
 ///
 /// A theme is a dictionary: background, text, secondaryText (hex strings without "#"),
-/// emoji, activationType, customizationId, gradient (hex strings, official designs only), name.
+/// emoji, activationType, customizationId, gradient (hex strings, official designs only), name,
+/// and decoration (an official design's activation type, carried by a custom theme).
 ///
 @interface SCINotesThemeRuntime : NSObject
 
@@ -29,12 +30,17 @@ extern NSString * const SCINotesUserCustomization;
 + (nullable id)themeModelForTheme:(NSDictionary *)theme;
 + (nullable NSDictionary *)themeFromModel:(nullable id)model;
 + (BOOL)isOfficialActivationType:(nullable NSString *)activationType;
++ (BOOL)isOfficialTheme:(nullable NSDictionary *)theme;
++ (nullable NSString *)decorationOfTheme:(nullable NSDictionary *)theme;
++ (nullable NSString *)emojiForActivationType:(nullable NSString *)activationType;
+
+// Every official design's type, to add on top of custom colors (Instagram 453's list)
++ (NSArray<NSDictionary *> *)decorations;
 
 // Official designs are only sent to the app during their event, so each one picked in
-// Instagram's palette is saved, to be reused later
+// Instagram's palette is saved for good, to be reused later
 + (NSArray<NSDictionary *> *)savedOfficialThemes;
 + (void)saveOfficialThemeFromModel:(id)model;
-+ (void)clearSavedOfficialThemes;
 
 // The theme picked through SCInsta for the note being written, or nil when Instagram's own
 // theme is used. Fixed up in the note request when posting.

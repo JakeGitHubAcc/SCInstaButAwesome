@@ -112,6 +112,35 @@ NSString * const SCINotesUserCustomization = @"user_led_customization";
     return activationType.length && ![activationType isEqualToString:SCINotesUserCustomization] && ![activationType isEqualToString:@"unsupported"];
 }
 
++ (BOOL)isOfficialTheme:(NSDictionary *)theme {
+    return [self isOfficialActivationType:theme[@"activationType"]];
+}
+
+// An official design's own type, else a custom theme's decoration, else a plain custom theme
++ (NSString *)activationTypeForTheme:(NSDictionary *)theme {
+    if ([self isOfficialTheme:theme]) return theme[@"activationType"];
+    return [theme[@"decoration"] length] ? theme[@"decoration"] : SCINotesUserCustomization;
+}
+
++ (NSString *)decorationOfTheme:(NSDictionary *)theme {
+    return [self isOfficialTheme:theme] ? theme[@"activationType"] : theme[@"decoration"];
+}
+
++ (NSString *)emojiForActivationType:(NSString *)activationType {
+    for (NSDictionary *design in [self officialDesignNames]) {
+        if ([design[@"activationType"] isEqualToString:activationType]) return design[@"emoji"];
+    }
+    return nil;
+}
+
++ (NSArray<NSDictionary *> *)decorations {
+    NSMutableArray *decorations = [NSMutableArray array];
+    for (NSDictionary *design in [self officialDesignNames]) {
+        [decorations addObject:@{ @"kind": @"decoration", @"name": design[@"name"], @"emoji": design[@"emoji"], @"decoration": design[@"activationType"] }];
+    }
+    return decorations;
+}
+
 + (id)themeModelForTheme:(NSDictionary *)theme {
     Class modelClass = NSClassFromString(@"IGNotesCustomThemeCreationModel");
     SEL initializer = NSSelectorFromString(@"initWithBackgroundColor:gradientBackgroundColors:textColor:secondaryTextColor:customEmoji:customizationId:usedGeneratedTheme:activationType:");
@@ -133,7 +162,7 @@ NSString * const SCINotesUserCustomization = @"user_led_customization";
     InitFunction init = (InitFunction)objc_msgSend;
 
     @try {
-        return init([modelClass alloc], initializer, background, gradient, text, secondaryText, theme[@"emoji"], theme[@"customizationId"], NO, theme[@"activationType"]);
+        return init([modelClass alloc], initializer, background, gradient, text, secondaryText, theme[@"emoji"], theme[@"customizationId"], NO, [self activationTypeForTheme:theme]);
     }
     @catch (NSException *exception) {
         NSLog(@"[SCInsta] Notes: couldn't create theme model: %@", exception.reason);
@@ -198,10 +227,6 @@ static NSString * const kSavedOfficialThemesKey = @"notes_saved_official_themes"
     saved[key] = theme;
     [[NSUserDefaults standardUserDefaults] setObject:saved forKey:kSavedOfficialThemesKey];
     NSLog(@"[SCInsta] Notes: saved official design %@", theme);
-}
-
-+ (void)clearSavedOfficialThemes {
-    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kSavedOfficialThemesKey];
 }
 
 // MARK: - Sharing
@@ -270,8 +295,10 @@ static NSDictionary *sciAppliedTheme;
         // Everything is set, including empty values, so nothing from an earlier design is left behind
         [input setValue:theme[@"emoji"] forKey:@"customEmoji"];
 
-        BOOL official = [self isOfficialActivationType:theme[@"activationType"]];
-        [input setValue:official ? theme[@"activationType"] : SCINotesUserCustomization forKey:@"activationType"];
+        // Custom colors can carry an official design's type as a decoration, but never its
+        // customization id (with custom colors that posts the note in the default grey)
+        BOOL official = [self isOfficialTheme:theme];
+        [input setValue:[self activationTypeForTheme:theme] forKey:@"activationType"];
         [input setValue:official ? theme[@"customizationId"] : nil forKey:@"customizationId"];
         [input setValue:official ? theme[@"expressiveEmoji"] : nil forKey:@"expressiveEmoji"];
 

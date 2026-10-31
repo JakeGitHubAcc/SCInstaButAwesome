@@ -126,7 +126,14 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 }
 
 - (void)configureWithIcon:(NSDictionary *)icon {
-    if ([icon[@"kind"] isEqualToString:@"swap"]) {
+    if ([icon[@"kind"] isEqualToString:@"decoration"]) {
+        // Decorations go on top of any colors
+        self.swatch.colors = @[(id)[UIColor colorWithWhite:0.22 alpha:1].CGColor, (id)[UIColor colorWithWhite:0.08 alpha:1].CGColor];
+        self.swatch.locations = nil;
+        self.label.text = icon[@"emoji"];
+        self.label.textColor = [UIColor whiteColor];
+    }
+    else if ([icon[@"kind"] isEqualToString:@"swap"]) {
         self.swatch.colors = @[(id)[UIColor whiteColor].CGColor, (id)[UIColor blackColor].CGColor];
         self.swatch.locations = @[@0.5, @0.5];
         self.label.text = @"⇄";
@@ -143,7 +150,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 
         // Official designs show their emoji; color presets show their text color
         BOOL official = [SCINotesThemeRuntime isOfficialActivationType:icon[@"activationType"]];
-        self.label.text = official ? (icon[@"emoji"] ?: @"") : @"Aa";
+        self.label.text = official ? (icon[@"emoji"] ?: [SCINotesThemeRuntime emojiForActivationType:icon[@"activationType"]] ?: @"") : @"Aa";
         self.label.textColor = [SCINotesThemeRuntime colorFromHex:icon[@"text"]] ?: [UIColor whiteColor];
     }
 
@@ -366,16 +373,28 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
 // Applies a theme picked through SCInsta (see SCINotesThemeRuntime for the format)
 %new - (void)applySCITheme:(NSDictionary *)theme {
     // Instagram's editor keeps state for its own official designs (like the Halloween 2026 bubble),
-    // which would linger under SCInsta's theme, so reset it with Instagram's own Clear first
+    // which would linger under SCInsta's theme, so reset it with Instagram's own Clear first.
+    // Clear finishes asynchronously, so the theme is applied once it's done.
     if (!SELF.sciTheme) {
         NSDictionary *current = [SCINotesThemeRuntime themeFromModel:[SELF sciCurrentThemeModel]];
         UIViewController *editor = [SCIUtils nearestViewControllerForView:SELF];
 
-        if ([SCINotesThemeRuntime isOfficialActivationType:current[@"activationType"]] && [editor respondsToSelector:@selector(didTapClearButton)]) {
+        if ([SCINotesThemeRuntime isOfficialTheme:current] && [editor respondsToSelector:@selector(didTapClearButton)]) {
+            SELF.sciTheme = theme;
             [editor performSelector:@selector(didTapClearButton)];
+
+            __weak SCINotesPaletteView *weakSelf = SELF;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [weakSelf sciApplyThemeNow:theme];
+            });
+            return;
         }
     }
 
+    [SELF sciApplyThemeNow:theme];
+}
+
+%new - (void)sciApplyThemeNow:(NSDictionary *)theme {
     SELF.sciTheme = theme;
     SELF.backgroundColor = [SCINotesThemeRuntime colorFromHex:theme[@"background"]];
     SELF.textColor = [SCINotesThemeRuntime colorFromHex:theme[@"text"]];
@@ -478,8 +497,9 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
             theme[@"secondaryText"] = theme[@"text"];
         }
 
-        // An official design's emoji belongs to the design
-        if ([SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) theme[@"emoji"] = SELF.sciUserEmoji;
+        // An official design's emoji belongs to the design; its look stays as a decoration
+        if ([SCINotesThemeRuntime isOfficialTheme:theme]) theme[@"emoji"] = SELF.sciUserEmoji;
+        theme[@"decoration"] = [SCINotesThemeRuntime decorationOfTheme:theme];
 
         theme[@"activationType"] = SCINotesUserCustomization;
         [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"expressiveEmoji", @"name"]];
@@ -500,6 +520,7 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     // Official designs saved from Instagram's palette first, then SCInsta's own
     NSMutableArray *items = [NSMutableArray array];
     [items addObjectsFromArray:[SCINotesThemeRuntime savedOfficialThemes]];
+    [items addObjectsFromArray:[SCINotesThemeRuntime decorations]];
     [items addObject:@{ @"kind": @"swap", @"name": @"Swap background and text" }];
     [items addObjectsFromArray:[SCINotesThemeRuntime colorPresets]];
 
@@ -604,9 +625,27 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
         theme[@"background"] = theme[@"text"] ?: @"FFFFFF";
         theme[@"text"] = background;
         theme[@"secondaryText"] = background;
-        if ([SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]]) theme[@"emoji"] = SELF.sciUserEmoji;
+        if ([SCINotesThemeRuntime isOfficialTheme:theme]) theme[@"emoji"] = SELF.sciUserEmoji;
+        theme[@"decoration"] = [SCINotesThemeRuntime decorationOfTheme:theme];
         theme[@"activationType"] = SCINotesUserCustomization;
         [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"expressiveEmoji", @"name"]];
+        [SELF applySCITheme:theme];
+        return;
+    }
+
+    NSDictionary *base = [SELF sciBaseTheme];
+
+    if ([icon[@"kind"] isEqualToString:@"decoration"]) {
+        // Add the decoration on top of the current colors; tapping the current one removes it
+        NSMutableDictionary *theme = [base mutableCopy];
+        if ([SCINotesThemeRuntime isOfficialTheme:theme]) theme[@"emoji"] = SELF.sciUserEmoji;
+
+        BOOL removing = [[SCINotesThemeRuntime decorationOfTheme:base] isEqualToString:icon[@"decoration"]];
+        theme[@"decoration"] = removing ? nil : icon[@"decoration"];
+        theme[@"activationType"] = SCINotesUserCustomization;
+        [theme removeObjectsForKeys:@[@"customizationId", @"gradient", @"expressiveEmoji", @"name"]];
+
+        if (removing) [collectionView deselectItemAtIndexPath:indexPath animated:YES];
         [SELF applySCITheme:theme];
         return;
     }
@@ -614,9 +653,10 @@ static id SCIFindSubviewOfClass(UIView *view, Class cls) {
     NSMutableDictionary *theme = [icon mutableCopy];
     [theme removeObjectForKey:@"name"];
 
-    // Color presets keep an emoji you set yourself; official designs bring their own
-    if (![SCINotesThemeRuntime isOfficialActivationType:theme[@"activationType"]] && SELF.sciUserEmoji) {
-        theme[@"emoji"] = SELF.sciUserEmoji;
+    // Color presets keep an emoji you set yourself and the current decoration; official designs bring their own
+    if (![SCINotesThemeRuntime isOfficialTheme:theme]) {
+        if (SELF.sciUserEmoji) theme[@"emoji"] = SELF.sciUserEmoji;
+        theme[@"decoration"] = [SCINotesThemeRuntime decorationOfTheme:base];
     }
 
     [SELF applySCITheme:theme];
