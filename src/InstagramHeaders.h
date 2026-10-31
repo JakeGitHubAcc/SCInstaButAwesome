@@ -434,6 +434,7 @@
 @property (nonatomic, copy) UIColor *textColor; // new
 @property (nonatomic, copy) NSString *emojiText; // new
 @property (nonatomic, copy) NSDictionary *sciTheme; // new
+@property (nonatomic, copy) NSString *sciUserEmoji; // new
 
 - (void)presentColorPicker:(NSString *)target; // new
 - (void)applySCICustomTheme:(NSString *)target; // new
