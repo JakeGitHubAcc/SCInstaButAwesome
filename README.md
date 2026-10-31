@@ -81,6 +81,7 @@ A feature-rich tweak for Instagram on iOS!\
 - Disable screenshot detection
 - Disable story seen receipt
 - Disable instants creation
+- Post instants from your gallery
 
 ### Navigation
 - Modify tab bar icon order
