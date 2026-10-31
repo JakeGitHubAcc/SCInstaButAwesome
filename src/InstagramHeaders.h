@@ -438,7 +438,12 @@
 
 - (void)presentColorPicker:(NSString *)target; // new
 - (void)applySCICustomTheme:(NSString *)target; // new
-- (UIMenu *)sciMoreMenu; // new
+@property (nonatomic, copy) UIColor *gradientEndColor; // new
+@property (nonatomic, copy) NSString *activationType; // new
+- (NSInteger)sciOriginalSectionCount; // new
+- (NSArray *)sciIconPages; // new
+- (NSDictionary *)sciIconAtIndexPath:(NSIndexPath *)indexPath; // new
+- (CGSize)collectionView:(UICollectionView *)collectionView layout:(UICollectionViewLayout *)layout sizeForItemAtIndexPath:(NSIndexPath *)indexPath;
 - (void)applySCIPreset:(NSDictionary *)preset; // new
 - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd; // new
 - (void)applySCIThemeWithBackground:(UIColor *)background text:(UIColor *)text emoji:(NSString *)emoji gradientEnd:(UIColor *)gradientEnd activationType:(NSString *)activationType; // new
