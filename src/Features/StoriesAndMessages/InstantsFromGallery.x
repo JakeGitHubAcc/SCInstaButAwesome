@@ -1,11 +1,15 @@
 #import "../../Utils.h"
 #import <PhotosUI/PhotosUI.h>
+#import <AVFoundation/AVFoundation.h>
+#import <CoreImage/CoreImage.h>
+#import <ImageIO/ImageIO.h>
 
 // Post a photo from the gallery as an instant (Instagram 453+)
 //
 // A gallery button is added to the instants camera. The picked photo is cropped in the instants
-// shape, shown in place of the camera preview, and replaces the camera shot when Instagram creates
-// the instant (IGQuickSnapCreationModel), so sending, audience and the instants look stay Instagram's.
+// shape and shown in place of the camera preview. When the shutter is pressed, the camera's photo
+// (AVCapturePhoto) hands back the cropped photo instead of what the camera saw, so everything
+// Instagram does with the shot (processing, sending, audience) uses it.
 
 static UIImage *sciPendingInstantImage;
 static __weak UIView *sciInstantsCameraView;
@@ -348,6 +352,155 @@ static void SCISetPendingInstantImage(UIImage *image) {
 
     UIButton *button = objc_getAssociatedObject(view, &kSCIGalleryButtonKey);
     if (button) [view bringSubviewToFront:button];
+}
+%end
+
+// MARK: - Replacing the camera shot
+
+static char kSCIReplacementKey;
+
+static BOOL SCIShouldReplaceCapture(void) {
+    return SCIInstantsFromGalleryEnabled() && sciPendingInstantImage && sciInstantsCameraView.window;
+}
+
+static CIContext *SCISharedCIContext(void) {
+    static CIContext *context;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ context = [CIContext contextWithOptions:nil]; });
+    return context;
+}
+
+static CGImagePropertyOrientation SCIOrientationOfPhoto(AVCapturePhoto *photo) {
+    NSNumber *orientation = photo.metadata[(NSString *)kCGImagePropertyOrientation];
+    return orientation ? (CGImagePropertyOrientation)orientation.unsignedIntValue : kCGImagePropertyOrientationUp;
+}
+
+// The gallery photo laid out like a camera frame of width x height pixels, stored the way the sensor
+// stores it: once `orientation` is applied it shows upright, as a centered square of the shorter side
+static CIImage *SCISensorImage(UIImage *image, size_t width, size_t height, CGImagePropertyOrientation orientation) {
+    BOOL rotated = orientation >= kCGImagePropertyOrientationLeftMirrored; // 5-8 swap width and height
+    CGSize displayed = rotated ? CGSizeMake(height, width) : CGSizeMake(width, height);
+    CGFloat side = MIN(displayed.width, displayed.height);
+
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1;
+    format.opaque = YES;
+    UIImage *upright = [[[UIGraphicsImageRenderer alloc] initWithSize:displayed format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIColor blackColor] setFill];
+        UIRectFill(CGRectMake(0, 0, displayed.width, displayed.height));
+        [image drawInRect:CGRectMake((displayed.width - side) / 2, (displayed.height - side) / 2, side, side)];
+    }];
+
+    // Undo the orientation Instagram will apply (only 6 and 8 aren't their own inverse)
+    CGImagePropertyOrientation inverse = orientation;
+    if (orientation == kCGImagePropertyOrientationRight) inverse = kCGImagePropertyOrientationLeft;
+    else if (orientation == kCGImagePropertyOrientationLeft) inverse = kCGImagePropertyOrientationRight;
+
+    CIImage *sensor = [[CIImage imageWithCGImage:upright.CGImage] imageByApplyingCGOrientation:inverse];
+    return [sensor imageByApplyingTransform:CGAffineTransformMakeTranslation(-sensor.extent.origin.x, -sensor.extent.origin.y)];
+}
+
+// Replacement data for one photo, made once and kept alive with it
+static NSMutableDictionary *SCIReplacementsForPhoto(AVCapturePhoto *photo) {
+    NSMutableDictionary *replacements = objc_getAssociatedObject(photo, &kSCIReplacementKey);
+    if (!replacements) {
+        replacements = [NSMutableDictionary dictionary];
+        objc_setAssociatedObject(photo, &kSCIReplacementKey, replacements, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        NSLog(@"[SCInsta] Instants: replacing camera shot with gallery photo");
+    }
+    return replacements;
+}
+
+static CVPixelBufferRef SCIReplacementPixelBuffer(AVCapturePhoto *photo, CVPixelBufferRef original, NSString *key) {
+    if (!original) return original;
+
+    NSMutableDictionary *replacements = SCIReplacementsForPhoto(photo);
+    if (replacements[key]) return (__bridge CVPixelBufferRef)replacements[key];
+
+    size_t width = CVPixelBufferGetWidth(original), height = CVPixelBufferGetHeight(original);
+    NSDictionary *attributes = @{ (NSString *)kCVPixelBufferIOSurfacePropertiesKey: @{} };
+
+    CVPixelBufferRef buffer = NULL;
+    if (CVPixelBufferCreate(kCFAllocatorDefault, width, height, CVPixelBufferGetPixelFormatType(original), (__bridge CFDictionaryRef)attributes, &buffer) != kCVReturnSuccess || !buffer) {
+        return original;
+    }
+
+    CIImage *sensor = SCISensorImage(sciPendingInstantImage, width, height, SCIOrientationOfPhoto(photo));
+    [SCISharedCIContext() render:sensor toCVPixelBuffer:buffer];
+
+    replacements[key] = (__bridge_transfer id)buffer;
+    return buffer;
+}
+
+static CGImageRef SCIReplacementCGImage(AVCapturePhoto *photo, CGImageRef original, NSString *key) {
+    if (!original) return original;
+
+    NSMutableDictionary *replacements = SCIReplacementsForPhoto(photo);
+    if (replacements[key]) return (__bridge CGImageRef)replacements[key];
+
+    CIImage *sensor = SCISensorImage(sciPendingInstantImage, CGImageGetWidth(original), CGImageGetHeight(original), SCIOrientationOfPhoto(photo));
+    CGImageRef image = [SCISharedCIContext() createCGImage:sensor fromRect:sensor.extent];
+    if (!image) return original;
+
+    replacements[key] = (__bridge_transfer id)image;
+    return image;
+}
+
+%hook AVCapturePhoto
+- (CVPixelBufferRef)pixelBuffer {
+    CVPixelBufferRef original = %orig;
+    return SCIShouldReplaceCapture() ? SCIReplacementPixelBuffer(self, original, @"pixelBuffer") : original;
+}
+
+- (CVPixelBufferRef)previewPixelBuffer {
+    CVPixelBufferRef original = %orig;
+    return SCIShouldReplaceCapture() ? SCIReplacementPixelBuffer(self, original, @"previewPixelBuffer") : original;
+}
+
+- (CGImageRef)CGImageRepresentation {
+    CGImageRef original = %orig;
+    return SCIShouldReplaceCapture() ? SCIReplacementCGImage(self, original, @"CGImageRepresentation") : original;
+}
+
+- (CGImageRef)previewCGImageRepresentation {
+    CGImageRef original = %orig;
+    return SCIShouldReplaceCapture() ? SCIReplacementCGImage(self, original, @"previewCGImageRepresentation") : original;
+}
+
+- (NSData *)fileDataRepresentation {
+    NSData *original = %orig;
+    if (!SCIShouldReplaceCapture() || !original) return original;
+
+    NSMutableDictionary *replacements = SCIReplacementsForPhoto(self);
+    if (replacements[@"fileData"]) return replacements[@"fileData"];
+
+    // Same size and orientation tag as the camera's file
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)original, NULL);
+    NSDictionary *properties = source ? (__bridge_transfer NSDictionary *)CGImageSourceCopyPropertiesAtIndex(source, 0, NULL) : nil;
+    if (source) CFRelease(source);
+
+    size_t width = [properties[(NSString *)kCGImagePropertyPixelWidth] unsignedLongValue];
+    size_t height = [properties[(NSString *)kCGImagePropertyPixelHeight] unsignedLongValue];
+    if (!width || !height) return original;
+
+    CGImagePropertyOrientation orientation = properties[(NSString *)kCGImagePropertyOrientation] ? (CGImagePropertyOrientation)[properties[(NSString *)kCGImagePropertyOrientation] unsignedIntValue] : SCIOrientationOfPhoto(self);
+    CIImage *sensor = SCISensorImage(sciPendingInstantImage, width, height, orientation);
+    CGImageRef image = [SCISharedCIContext() createCGImage:sensor fromRect:sensor.extent];
+    if (!image) return original;
+
+    NSMutableData *data = [NSMutableData data];
+    CGImageDestinationRef destination = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)data, CFSTR("public.jpeg"), 1, NULL);
+    if (destination) {
+        NSDictionary *options = @{ (NSString *)kCGImagePropertyOrientation: @(orientation), (NSString *)kCGImageDestinationLossyCompressionQuality: @0.92 };
+        CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)options);
+        CGImageDestinationFinalize(destination);
+        CFRelease(destination);
+    }
+    CGImageRelease(image);
+
+    if (!data.length) return original;
+    replacements[@"fileData"] = data;
+    return data;
 }
 %end
 
