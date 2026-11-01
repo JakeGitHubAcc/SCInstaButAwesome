@@ -240,11 +240,19 @@ static NSString * const kSavedOfficialThemesKey = @"notes_saved_official_themes"
 
 // MARK: - Sharing
 
++ (id)noteCreateParamsOfRequest:(id)request {
+    id container = request;
+    if (![container respondsToSelector:NSSelectorFromString(@"noteCreateParams")]) {
+        container = [self valueOf:request forKey:@"additionalParams"];
+    }
+    return [self valueOf:container forKey:@"noteCreateParams"];
+}
+
 // Official designs can add an "expressive emoji" (like the stars in the corners), which isn't part
 // of the theme model. Learn it when a saved design is posted through Instagram's own palette.
 + (void)learnFromOfficialNoteRequest:(id)request {
     @try {
-        id input = [[request valueForKey:@"noteCreateParams"] valueForKey:@"noteCustomization"];
+        id input = [[self noteCreateParamsOfRequest:request] valueForKey:@"noteCustomization"];
         NSString *activationType = [input valueForKey:@"activationType"];
         if (![self isOfficialActivationType:activationType]) return;
 
@@ -281,7 +289,7 @@ static NSDictionary *sciAppliedTheme;
     }
 
     @try {
-        id params = [request valueForKey:@"noteCreateParams"];
+        id params = [self noteCreateParamsOfRequest:request];
         if (!params) return;
 
         id input = [params valueForKey:@"noteCustomization"];

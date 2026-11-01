@@ -45,6 +45,10 @@ extern NSString * const SCINotesUserCustomization;
 // The theme picked through SCInsta for the note being written, or nil when Instagram's own
 // theme is used. Fixed up in the note request when posting.
 + (void)setAppliedTheme:(nullable NSDictionary *)theme;
+
+// The note's IGXDTNoteCreateParams inside a note request
+// (IGXDTCreateInboxTrayItemRequest -> additionalParams -> noteCreateParams)
++ (nullable id)noteCreateParamsOfRequest:(nullable id)request;
 + (void)applyThemeToNoteRequest:(id)request;
 
 // Property names and types of the note theme classes, for adding support for new Instagram versions

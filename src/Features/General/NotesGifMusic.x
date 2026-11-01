@@ -138,7 +138,8 @@ static void SCIAddSavedSongToRequest(id request) {
     if (![SCIUtils getBoolPref:@"notes_gif_with_music"] || !sciSavedSong) return;
 
     @try {
-        id params = [request valueForKey:@"noteCreateParams"];
+        id params = [SCINotesThemeRuntime noteCreateParamsOfRequest:request];
+        if (!params) return;
         id info = [params valueForKey:@"noteCreateInfo"];
         if (![info valueForKey:@"gifNoteCreateInfo"] || [info valueForKey:@"musicNoteCreateInfo"]) return;
 
@@ -288,7 +289,10 @@ static void SCISaveSongFromMusicController(id controller) {
 // Every note request passes through here (Instagram 453+): add the saved song and fix up the theme
 %hook IGDirectCreateNoteMutationQueryBuilder
 + (id)builderWithRequest:(id)request {
-    SCIAddSavedSongToRequest(request);
+    // Instagram's own music snapshot first (if the GIF snapshot didn't already add it), then the fallback
+    if (!SCIAddMusicSnapshotToParams([SCINotesThemeRuntime noteCreateParamsOfRequest:request])) {
+        SCIAddSavedSongToRequest(request);
+    }
     [SCINotesThemeRuntime applyThemeToNoteRequest:request];
     [SCINoteRequestLog recordObject:request title:@"Note request (IGDirectCreateNoteMutationQueryBuilder)"];
 
