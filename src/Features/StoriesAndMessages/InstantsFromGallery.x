@@ -13,6 +13,7 @@
 
 static UIImage *sciPendingInstantImage;
 static __weak UIView *sciInstantsCameraView;
+static BOOL sciInstantsCameraOnScreen; // Set on the main thread; read from the camera's queue
 static char kSCIGalleryButtonKey;
 static char kSCIPreviewOverlayKey;
 
@@ -321,6 +322,7 @@ static void SCISetPendingInstantImage(UIImage *image) {
     %orig;
 
     UIView *view = (UIView *)self;
+    sciInstantsCameraOnScreen = view.window != nil;
     if (!SCIInstantsFromGalleryEnabled() || !view.window) return;
 
     sciInstantsCameraView = view;
@@ -360,7 +362,7 @@ static void SCISetPendingInstantImage(UIImage *image) {
 static char kSCIReplacementKey;
 
 static BOOL SCIShouldReplaceCapture(void) {
-    return SCIInstantsFromGalleryEnabled() && sciPendingInstantImage && sciInstantsCameraView.window;
+    return SCIInstantsFromGalleryEnabled() && sciPendingInstantImage && sciInstantsCameraOnScreen;
 }
 
 static CIContext *SCISharedCIContext(void) {
