@@ -24,6 +24,7 @@ A feature-rich tweak for Instagram on iOS!\
 ### General
 - Hide ads
 - Hide Meta AI
+- Classic iOS theme (iOS 6 style bars and tab bar)
 - Hide Instagram Beta (TestFlight) update screens
 - Copy description
 - Do not save recent searches

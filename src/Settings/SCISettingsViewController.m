@@ -64,6 +64,25 @@ static char rowStaticRef[] = "row";
     self.tableView.delegate = self;
 
     [self.view addSubview:self.tableView];
+
+    // Classic iOS theme: the iOS 6 pinstripe background (light mode)
+    if ([SCIUtils getBoolPref:@"classic_ios_theme"]) {
+        UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+        format.scale = 1;
+        UIImage *stripes = [[[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(7, 1) format:format] imageWithActions:^(UIGraphicsImageRendererContext *context) {
+            [[UIColor colorWithRed:0xC5/255.0 green:0xCC/255.0 blue:0xD4/255.0 alpha:1] setFill];
+            UIRectFill(CGRectMake(0, 0, 5, 1));
+            [[UIColor colorWithRed:0xCB/255.0 green:0xD2/255.0 blue:0xD8/255.0 alpha:1] setFill];
+            UIRectFill(CGRectMake(5, 0, 2, 1));
+        }];
+        UIColor *pinstripes = [UIColor colorWithPatternImage:stripes];
+        UIColor *background = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+            return traits.userInterfaceStyle == UIUserInterfaceStyleDark ? UIColor.systemGroupedBackgroundColor : pinstripes;
+        }];
+
+        self.view.backgroundColor = background;
+        self.tableView.backgroundColor = background;
+    }
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
