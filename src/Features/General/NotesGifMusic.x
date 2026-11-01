@@ -151,8 +151,9 @@ static void SCIAddSavedSongToRequest(id request) {
 
         id music = ((id (*)(id, SEL, id))objc_msgSend)([musicClass alloc], initializer, sciSavedSong[@"clusterId"]);
         if (sciSavedSong[@"assetId"]) [music setValue:sciSavedSong[@"assetId"] forKey:@"audioAssetId"];
+        // As Instagram's own song notes send it: start time in milliseconds, no duration
         [music setValue:SCIMilliseconds(sciSavedSong[@"startTime"]) forKey:@"startTime"];
-        [music setValue:SCIMilliseconds(sciSavedSong[@"duration"]) forKey:@"duration"];
+        [music setValue:@15 forKey:@"audioApplySource"];
 
         [info setValue:music forKey:@"musicNoteCreateInfo"];
         NSLog(@"[SCInsta] Notes: added saved song to GIF note");
@@ -217,21 +218,51 @@ static void SCIAddSavedSongToRequest(id request) {
 }
 %end
 
-// The music button's controller (Instagram 453+); a backup for the snapshot above
+// Builds Instagram's music snapshot from the music button's current song (its
+// selectedMusicViewModel), so the song can be kept when the GIF replaces it
+static void SCISaveSongFromMusicController(id controller) {
+    id viewModel = [SCIUtils getIvarForObj:controller name:"selectedMusicViewModel"];
+    if (!viewModel || ![viewModel isKindOfClass:NSClassFromString(@"IGDirectNotesMusicNoteViewModel")]) return;
+
+    SCISaveSongFromViewModel(viewModel);
+
+    Class snapshotClass = objc_getClass("_TtC24IGMusicFamilyNoteContent26IGMusicNoteContentSnapshot");
+    SEL initializer = NSSelectorFromString(@"initWithMusicViewModel:");
+    if ([snapshotClass instancesRespondToSelector:initializer]) {
+        // The snapshot initializer hook below keeps it
+        ((id (*)(id, SEL, id))objc_msgSend)([snapshotClass alloc], initializer, viewModel);
+    }
+}
+
+// The music button's controller (Instagram 453+)
 // Demangled name: IGDirectMusicNoteCreationPlugin.IGMusicNoteCreationController
 %hook _TtC31IGDirectMusicNoteCreationPlugin29IGMusicNoteCreationController
 - (void)audioEditorViewControllerDelegateDidTapDone:(id)editor selectedAudio:(id)audio audioStartTime:(double)startTime audioDuration:(double)duration selectedLyricPhrase:(id)lyrics {
     SCISaveSong(audio, startTime, duration);
     %orig;
+    SCISaveSongFromMusicController(self);
 }
 
 - (void)audioBrowserViewController:(id)browser didSelectAudioTrack:(id)track context:(id)context {
     SCISaveSong(track, 0, 0);
     %orig;
+    SCISaveSongFromMusicController(self);
 }
 
 - (void)audioBrowserViewController:(id)browser didTapAudioTrack:(id)track context:(id)context {
     SCISaveSong(track, 0, 0);
+    %orig;
+    SCISaveSongFromMusicController(self);
+}
+
+// Switching to the GIF button: keep the song before Instagram drops it
+- (void)controllerDidResignActive {
+    SCISaveSongFromMusicController(self);
+    %orig;
+}
+
+- (void)clearSelection {
+    SCISaveSongFromMusicController(self);
     %orig;
 }
 %end
