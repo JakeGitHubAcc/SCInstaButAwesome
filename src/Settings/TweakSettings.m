@@ -147,7 +147,7 @@
                                                 [SCISetting switchCellWithTitle:@"Disable view-once limitations" subtitle:@"Makes view-once messages behave like normal visual messages (loopable/pauseable)" defaultsKey:@"disable_view_once_limitations"],
                                                 [SCISetting switchCellWithTitle:@"Disable screenshot detection" subtitle:@"Removes the screenshot-prevention features for visual messages in DMs" defaultsKey:@"remove_screenshot_alert"],
                                                 [SCISetting switchCellWithTitle:@"Disable story seen receipt" subtitle:@"Hides the notification for others when you view their story" defaultsKey:@"no_seen_receipt"],
-                                                [SCISetting switchCellWithTitle:@"Post instants from gallery" subtitle:@"Adds a gallery button to the instants camera: pick a photo, then tap the shutter to post it as your instant" defaultsKey:@"instants_from_gallery"],
+                                                [SCISetting switchCellWithTitle:@"Post instants from gallery" subtitle:@"Adds a gallery button to the instants camera: pick a photo, crop it in the instants shape, then tap the shutter to post it" defaultsKey:@"instants_from_gallery"],
                                                 [SCISetting switchCellWithTitle:@"Disable instants creation" subtitle:@"Hides the functionality to create/send instants" defaultsKey:@"disable_instants_creation" requiresRestart:YES]
                                             ]
                                         }]
