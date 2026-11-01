@@ -109,8 +109,9 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
                                                           bottomLine:SCIHex(0x2D3642)];
         objc_setAssociatedObject(bar, &kSCIClassicBackgroundKey, background, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    // Only reorder when needed, so this doesn't trigger another layout pass
     if (background.superview != bar) [bar insertSubview:background atIndex:0];
-    else [bar sendSubviewToBack:background];
+    else if (bar.subviews.firstObject != background) [bar sendSubviewToBack:background];
 
     // Reach up behind the status bar too
     CGFloat top = bar.window ? [bar convertPoint:CGPointZero toView:nil].y : 0;
@@ -138,12 +139,14 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
     }
 
     // Above Instagram's own background, below the views holding the tab buttons
+    // (positions counted without the background itself; only reorder when needed)
     Class buttonClass = NSClassFromString(@"IGTabBarButton");
-    NSUInteger insertIndex = 0;
-    for (NSUInteger i = 0; i < bar.subviews.count; i++) {
-        UIView *subview = bar.subviews[i];
-        if (subview == background) continue;
+    NSMutableArray<UIView *> *others = [bar.subviews mutableCopy];
+    [others removeObject:background];
 
+    NSUInteger insertIndex = 0;
+    for (NSUInteger i = 0; i < others.count; i++) {
+        UIView *subview = others[i];
         BOOL holdsButtons = [subview isKindOfClass:buttonClass];
         for (UIView *child in subview.subviews) {
             if ([child isKindOfClass:buttonClass]) holdsButtons = YES;
@@ -151,9 +154,10 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
         if (holdsButtons) break;
         insertIndex = i + 1;
     }
-    if (background.superview != bar || [bar.subviews indexOfObject:background] != MIN(insertIndex, bar.subviews.count - 1)) {
+
+    if (background.superview != bar || [bar.subviews indexOfObject:background] != insertIndex) {
         [background removeFromSuperview];
-        [bar insertSubview:background atIndex:MIN(insertIndex, bar.subviews.count)];
+        [bar insertSubview:background atIndex:insertIndex];
     }
 
     // Down over the home indicator area
