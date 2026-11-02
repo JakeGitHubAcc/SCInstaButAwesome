@@ -39,7 +39,6 @@ A feature-rich tweak for Instagram on iOS!\
   - Note color presets, and official seasonal designs saved for use after their event
   - Seasonal decorations from saved designs on top of custom colors (experimental)
   - Unlock all note themes (seasonal options any day)
-  - GIF notes with a song (experimental)
 - Focus/Distractions
   - No suggested users
   - No suggested chats
