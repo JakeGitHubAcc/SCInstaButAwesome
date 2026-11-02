@@ -29,7 +29,10 @@ static UIColor *SCIHex(unsigned int value) {
         self.userInteractionEnabled = NO;
 
         self.gradient = [CAGradientLayer layer];
-        self.gradient.colors = [colors valueForKey:@"CGColor"];
+        // CGColor isn't key-value coding compliant, so the array is built by hand
+        NSMutableArray *cgColors = [NSMutableArray arrayWithCapacity:colors.count];
+        for (UIColor *color in colors) [cgColors addObject:(__bridge id)color.CGColor];
+        self.gradient.colors = cgColors;
         [self.layer addSublayer:self.gradient];
 
         if (gloss) {
