@@ -3,6 +3,7 @@
 
 static NSString * const kSCILocalPinsKey = @"local_pinned_threads"; // Thread ids, newest pin first
 static char kSCIPinButtonKey;
+static char kSCIMarkedPinnedKey; // Rows SCInsta marked pinned, so they aren't taken for Instagram's own pins
 
 @implementation SCILocalPinnedChats
 
@@ -34,6 +35,12 @@ static char kSCIPinButtonKey;
     return threadId ? [NSString stringWithFormat:@"%@", threadId] : nil;
 }
 
+// Pinned by Instagram itself (not marked by SCInsta)
++ (BOOL)isInstagramPinned:(id)object {
+    if (objc_getAssociatedObject(object, &kSCIMarkedPinnedKey)) return NO;
+    return [object respondsToSelector:NSSelectorFromString(@"isPinned")] && [[object valueForKey:@"isPinned"] boolValue];
+}
+
 + (NSArray *)reorderInboxObjects:(NSArray *)objects {
     NSArray *pins = [self pinnedThreadIds];
     if (![self isEnabled] || !pins.count) return objects;
@@ -44,7 +51,7 @@ static char kSCIPinButtonKey;
 
     for (id object in objects) {
         NSString *threadId = [object isKindOfClass:threadClass] ? [self threadIdOf:object] : nil;
-        if (threadId && [pins containsObject:threadId] && ![[object valueForKey:@"isPinned"] boolValue]) {
+        if (threadId && [pins containsObject:threadId] && ![self isInstagramPinned:object]) {
             pinned[threadId] = object;
         }
         else {
@@ -58,7 +65,7 @@ static char kSCIPinButtonKey;
     for (NSUInteger i = 0; i < result.count; i++) {
         if (![result[i] isKindOfClass:threadClass]) continue;
         if (insertIndex == NSNotFound) insertIndex = i;
-        if ([[result[i] valueForKey:@"isPinned"] boolValue]) insertIndex = i + 1;
+        if ([self isInstagramPinned:result[i]]) insertIndex = i + 1;
     }
     if (insertIndex == NSNotFound) insertIndex = result.count;
 
@@ -67,7 +74,10 @@ static char kSCIPinButtonKey;
         if (!object) continue;
 
         // Show Instagram's own pin icon on the row
-        @try { [object setValue:@YES forKey:@"isPinned"]; }
+        @try {
+            [object setValue:@YES forKey:@"isPinned"];
+            objc_setAssociatedObject(object, &kSCIMarkedPinnedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         @catch (NSException *exception) {}
 
         [result insertObject:object atIndex:insertIndex];
