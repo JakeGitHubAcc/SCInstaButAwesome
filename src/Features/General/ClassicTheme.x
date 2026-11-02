@@ -73,6 +73,24 @@ static UIColor *SCIHex(unsigned int value) {
 
 static char kSCIClassicBackgroundKey;
 static char kSCIClassicGlowKey;
+static char kSCIClassicSelectedKey;
+static char kSCIClassicLayingOutKey;
+
+// Instagram re-lays out its bars when their colors change, so colors are only set when they differ
+// and each bar's styling skips nested layout passes; otherwise the two loop until the app is killed
+static void SCISetTint(UIView *view, UIColor *color) {
+    if (![view.tintColor isEqual:color]) view.tintColor = color;
+}
+
+static BOOL SCIBeginClassicLayout(UIView *view) {
+    if (objc_getAssociatedObject(view, &kSCIClassicLayingOutKey)) return NO;
+    objc_setAssociatedObject(view, &kSCIClassicLayingOutKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return YES;
+}
+
+static void SCIEndClassicLayout(UIView *view) {
+    objc_setAssociatedObject(view, &kSCIClassicLayingOutKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 // White embossed titles and white icons, like iOS 6 bars
 static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
@@ -81,12 +99,14 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
 
         if ([subview isKindOfClass:[UILabel class]]) {
             UILabel *label = (UILabel *)subview;
-            label.textColor = [UIColor whiteColor];
-            label.shadowColor = [UIColor colorWithWhite:0 alpha:0.45];
-            label.shadowOffset = CGSizeMake(0, -1);
+            if (![label.textColor isEqual:[UIColor whiteColor]]) label.textColor = [UIColor whiteColor];
+            if (!label.shadowColor) {
+                label.shadowColor = [UIColor colorWithWhite:0 alpha:0.45];
+                label.shadowOffset = CGSizeMake(0, -1);
+            }
         }
         else if ([subview isKindOfClass:[UIButton class]] || [subview isKindOfClass:[UIImageView class]]) {
-            subview.tintColor = [UIColor whiteColor];
+            SCISetTint(subview, [UIColor whiteColor]);
         }
 
         SCIClassicStyleBarContents(subview, skip);
@@ -97,9 +117,9 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
 %hook IGNavigationBar
 - (void)layoutSubviews {
     %orig;
-    if (!SCIClassicTheme()) return;
 
     UIView *bar = (UIView *)self;
+    if (!SCIClassicTheme() || !SCIBeginClassicLayout(bar)) return;
     SCIClassicBarBackground *background = objc_getAssociatedObject(bar, &kSCIClassicBackgroundKey);
     if (!background) {
         background = [[SCIClassicBarBackground alloc] initWithColors:@[SCIHex(0xB4C1D2), SCIHex(0x8496B0), SCIHex(0x6D83A1)]
@@ -118,6 +138,7 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
     background.frame = CGRectMake(0, -MAX(0, top), bar.bounds.size.width, bar.bounds.size.height + MAX(0, top));
 
     SCIClassicStyleBarContents(bar, background);
+    SCIEndClassicLayout(bar);
 }
 %end
 
@@ -125,9 +146,9 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
 %hook IGTabBar
 - (void)layoutSubviews {
     %orig;
-    if (!SCIClassicTheme()) return;
 
     UIView *bar = (UIView *)self;
+    if (!SCIClassicTheme() || !SCIBeginClassicLayout(bar)) return;
     SCIClassicBarBackground *background = objc_getAssociatedObject(bar, &kSCIClassicBackgroundKey);
     if (!background) {
         background = [[SCIClassicBarBackground alloc] initWithColors:@[SCIHex(0x3A3A3A), SCIHex(0x1C1C1C), SCIHex(0x0A0A0A)]
@@ -162,7 +183,9 @@ static void SCIClassicStyleBarContents(UIView *view, UIView *skip) {
 
     // Down over the home indicator area
     CGFloat bottom = bar.window ? bar.window.bounds.size.height - [bar convertPoint:CGPointMake(0, bar.bounds.size.height) toView:nil].y : 0;
-    background.frame = CGRectMake(0, 0, bar.bounds.size.width, bar.bounds.size.height + MAX(0, bottom));
+    CGRect frame = CGRectMake(0, 0, bar.bounds.size.width, bar.bounds.size.height + MAX(0, bottom));
+    if (!CGRectEqualToRect(background.frame, frame)) background.frame = frame;
+    SCIEndClassicLayout(bar);
 }
 %end
 
@@ -188,18 +211,30 @@ static void SCIClassicUpdateTabButton(UIView *button, BOOL selected) {
     glow.hidden = !selected;
     [CATransaction commit];
 
-    button.tintColor = selected ? [UIColor whiteColor] : SCIHex(0x9A9A9A);
+    SCISetTint(button, selected ? [UIColor whiteColor] : SCIHex(0x9A9A9A));
 }
 
+// The selected state is remembered from setSelected:, as the button may not be a UIControl
 %hook IGTabBarButton
 - (void)setSelected:(BOOL)selected {
     %orig;
-    if (SCIClassicTheme()) SCIClassicUpdateTabButton((UIView *)self, selected);
+
+    UIView *button = (UIView *)self;
+    objc_setAssociatedObject(button, &kSCIClassicSelectedKey, @(selected), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (SCIClassicTheme() && SCIBeginClassicLayout(button)) {
+        SCIClassicUpdateTabButton(button, selected);
+        SCIEndClassicLayout(button);
+    }
 }
 
 - (void)layoutSubviews {
     %orig;
-    if (SCIClassicTheme()) SCIClassicUpdateTabButton((UIView *)self, ((UIButton *)self).isSelected);
+
+    UIView *button = (UIView *)self;
+    if (SCIClassicTheme() && SCIBeginClassicLayout(button)) {
+        SCIClassicUpdateTabButton(button, [objc_getAssociatedObject(button, &kSCIClassicSelectedKey) boolValue]);
+        SCIEndClassicLayout(button);
+    }
 }
 %end
 
@@ -207,7 +242,9 @@ static void SCIClassicUpdateTabButton(UIView *button, BOOL selected) {
     %init;
 
     if (SCIClassicTheme()) {
-        // iOS 6 blue switches
-        [[UISwitch appearance] setOnTintColor:SCIHex(0x2E7FE8)];
+        // iOS 6 blue switches, once the app has started
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[UISwitch appearance] setOnTintColor:SCIHex(0x2E7FE8)];
+        });
     }
 }
