@@ -241,6 +241,29 @@ static void SCIClassicUpdateTabButton(UIView *button, BOOL selected) {
 %ctor {
     %init;
 
+    // Safety net: if the last launch with the theme on didn't survive its first seconds, turn the theme
+    // off so Instagram can open (and say why once it has)
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if (SCIClassicTheme() && [defaults boolForKey:@"classic_ios_theme_launching"]) {
+        [defaults setBool:NO forKey:@"classic_ios_theme"];
+        [defaults setBool:NO forKey:@"classic_ios_theme_launching"];
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Classic iOS theme turned off"
+                                                                           message:@"Instagram closed while starting with the theme on, so SCInsta turned it off."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [topMostController() presentViewController:alert animated:YES completion:nil];
+        });
+    }
+
+    if (SCIClassicTheme()) {
+        [defaults setBool:YES forKey:@"classic_ios_theme_launching"];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"classic_ios_theme_launching"];
+        });
+    }
+
     if (SCIClassicTheme()) {
         // iOS 6 blue switches, once the app has started
         dispatch_async(dispatch_get_main_queue(), ^{
