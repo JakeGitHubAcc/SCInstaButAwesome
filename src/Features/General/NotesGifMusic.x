@@ -95,6 +95,14 @@ static NSNumber *SCIMilliseconds(NSNumber *seconds) {
 
 // Lets Instagram's music snapshot fill a scratch copy of the note params, then moves only its
 // musicNoteCreateInfo into the GIF note's params
+// The server shows a note's content by its noteStyle: with the GIF style (11) it dropped the song
+// (seen in the note log), so a GIF note with a song is posted with the song note style (1),
+// keeping the GIF attached
+static void SCIUseMusicNoteStyle(id params) {
+    @try { [params setValue:@1 forKey:@"noteStyle"]; }
+    @catch (NSException *exception) {}
+}
+
 static BOOL SCIAddMusicSnapshotToParams(id params) {
     if (![SCIUtils getBoolPref:@"notes_gif_with_music"] || !sciSavedMusicSnapshot || !params) return NO;
 
@@ -120,6 +128,7 @@ static BOOL SCIAddMusicSnapshotToParams(id params) {
         }
 
         [info setValue:music forKey:@"musicNoteCreateInfo"];
+        SCIUseMusicNoteStyle(params);
         NSLog(@"[SCInsta] Notes: added song snapshot to GIF note");
         SCIShowSongMessage(@"♪ Song added to your GIF note", YES);
 
@@ -157,6 +166,7 @@ static void SCIAddSavedSongToRequest(id request) {
         [music setValue:@15 forKey:@"audioApplySource"];
 
         [info setValue:music forKey:@"musicNoteCreateInfo"];
+        SCIUseMusicNoteStyle(params);
         NSLog(@"[SCInsta] Notes: added saved song to GIF note");
         SCIShowSongMessage(@"♪ Song added to your GIF note", YES);
 
@@ -293,6 +303,16 @@ static void SCISaveSongFromMusicController(id controller) {
     if (!SCIAddMusicSnapshotToParams([SCINotesThemeRuntime noteCreateParamsOfRequest:request])) {
         SCIAddSavedSongToRequest(request);
     }
+
+    // Instagram may set the style after the GIF fills in the params, so check the finished request
+    @try {
+        id params = [SCINotesThemeRuntime noteCreateParamsOfRequest:request];
+        id info = [params valueForKey:@"noteCreateInfo"];
+        if ([SCIUtils getBoolPref:@"notes_gif_with_music"] && [info valueForKey:@"gifNoteCreateInfo"] && [info valueForKey:@"musicNoteCreateInfo"]) {
+            SCIUseMusicNoteStyle(params);
+        }
+    }
+    @catch (NSException *exception) {}
     [SCINotesThemeRuntime applyThemeToNoteRequest:request];
     [SCINoteRequestLog recordObject:request title:@"Note request (IGDirectCreateNoteMutationQueryBuilder)"];
 
