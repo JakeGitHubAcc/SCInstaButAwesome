@@ -136,6 +136,7 @@
                                         navSections:@[@{
                                             @"header": @"Messages",
                                             @"rows": @[
+                                                [SCISetting switchCellWithTitle:@"Unlimited pinned chats" subtitle:@"Adds a pin button to chats; pinned chats go to the top of your inbox after Instagram's own pins (kept on this device)" defaultsKey:@"local_pinned_chats"],
                                                 [SCISetting switchCellWithTitle:@"Keep deleted messages" subtitle:@"Saves deleted messages in chat conversations" defaultsKey:@"keep_deleted_message"],
                                                 [SCISetting switchCellWithTitle:@"Manually mark messages as seen" subtitle:@"Adds a button to DM threads, which will mark messages as seen" defaultsKey:@"remove_lastseen"],
                                                 [SCISetting switchCellWithTitle:@"Disable typing status" subtitle:@"Prevents the typing indicator from being shown to others when you're typing in DMs" defaultsKey:@"disable_typing_status"],

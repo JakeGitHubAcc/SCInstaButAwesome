@@ -75,6 +75,7 @@ A feature-rich tweak for Instagram on iOS!\
 
 ### Stories and messages
 - Keep deleted messages
+- Unlimited pinned chats (on this device)
 - Manually mark messages as seen
 - Disable typing status
 - Unlimited replay of direct stories

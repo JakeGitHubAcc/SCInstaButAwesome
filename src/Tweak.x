@@ -1,6 +1,7 @@
 #import <substrate.h>
 #import "InstagramHeaders.h"
 #import "Tweak.h"
+#import "Features/StoriesAndMessages/LocalPinnedChats.h"
 #import "Utils.h"
 
 ///////////////////////////////////////////////////////////
@@ -425,7 +426,8 @@ shouldPersistLastBugReportId:(id)arg6
 
     }
 
-    return [filteredObjs copy];
+    // Chats pinned in SCInsta go to the top
+    return [SCILocalPinnedChats reorderInboxObjects:[filteredObjs copy]];
 }
 %end
 %end
